@@ -1,0 +1,69 @@
+{
+  "_note": "Model profiles. Shared by tools\\Build-GhostAgent.ps1 (what to download and verify) and GhostAgent\\agent\\ghost_agent.py (how to run it). Every file is pinned to a Hugging Face revision and a SHA-256.",
+  "default": "fast",
+  "profiles": {
+    "fast": {
+      "label": "Holo4-35B-A3B Q4_K_M (H Company)",
+      "description": "Mixture of experts, about 3B active parameters per token: the fastest option on an 8 GB GPU.",
+      "arch": "moe",
+      "ctx_size": 65536,
+      "alias": "holo4-35b-a3b",
+      "license": "Apache-2.0",
+      "license_file": "Holo4-35B-A3B-LICENSE.txt",
+      "model": {
+        "name": "Holo4-35B-A3B-Q4_K_M.gguf",
+        "url": "https://huggingface.co/Hcompany/Holo4-35B-A3B-GGUF/resolve/93400a4734519493de4f49910de1f6e0e24be46b/q4_k_m.gguf",
+        "size": 21297870912,
+        "sha256": "4c51212a4b5673d6a4215b9d708cd1730f1b6b4dbb5f75552df18de8341ce669"
+      },
+      "mmproj": {
+        "name": "Holo4-35B-A3B-mmproj-f16.gguf",
+        "url": "https://huggingface.co/Hcompany/Holo4-35B-A3B-GGUF/resolve/93400a4734519493de4f49910de1f6e0e24be46b/mmproj.f16.gguf",
+        "size": 899282976,
+        "sha256": "e1076d4179a6d82dbc7f129f043ac5cb03e4584ef5c1ed4a0c31eca5d1a187e4"
+      }
+    },
+    "fast-q8": {
+      "label": "Holo4-35B-A3B Q8_0 (community quant by bartowski)",
+      "description": "Same model at 8-bit precision. Explicit trade-off: closer to the original weights, but each step is slower and it needs about 44-48 GB of RAM.",
+      "arch": "moe",
+      "ctx_size": 65536,
+      "alias": "holo4-35b-a3b-q8",
+      "license": "Apache-2.0",
+      "license_file": "Holo4-35B-A3B-LICENSE.txt",
+      "model": {
+        "name": "Holo4-35B-A3B-Q8_0.gguf",
+        "url": "https://huggingface.co/bartowski/Hcompany_Holo4-35B-A3B-GGUF/resolve/2ef8a872e6210e799101b4671fdd58814316ad8f/Hcompany_Holo4-35B-A3B-Q8_0.gguf",
+        "size": 36914690752,
+        "sha256": "520fed46c9ac128083666496e4a4db74f1611c9e98fbd7bc766f97162b2e6f14"
+      },
+      "mmproj": {
+        "name": "Holo4-35B-A3B-mmproj-f16.gguf",
+        "url": "https://huggingface.co/Hcompany/Holo4-35B-A3B-GGUF/resolve/93400a4734519493de4f49910de1f6e0e24be46b/mmproj.f16.gguf",
+        "size": 899282976,
+        "sha256": "e1076d4179a6d82dbc7f129f043ac5cb03e4584ef5c1ed4a0c31eca5d1a187e4"
+      }
+    },
+    "accurate": {
+      "label": "Holo4-27B Q4_K_M (H Company)",
+      "description": "H Company's most capable model (dense, all 27B parameters active). Explicit trade-off: noticeably better on long tasks, but several times slower per step on an 8 GB GPU. Non-commercial license.",
+      "arch": "dense",
+      "ctx_size": 32768,
+      "alias": "holo4-27b",
+      "license": "CC-BY-NC-4.0",
+      "license_file": "Holo4-27B-LICENSE.txt",
+      "model": {
+        "name": "Holo4-27B-Q4_K_M.gguf",
+        "url": "https://huggingface.co/Hcompany/Holo4-27B-GGUF/resolve/045834b6864fb5cee8e9c72e47ef4c19140ce932/q4_k_m.gguf",
+        "size": 16875182592,
+        "sha256": "8071d3ed5f59c88282e6466add0b344b51d49c8c630ae8f93d673ac0911ab962"
+      },
+      "mmproj": {
+        "name": "Holo4-27B-mmproj-f16.gguf",
+        "url": "https://huggingface.co/Hcompany/Holo4-27B-GGUF/resolve/045834b6864fb5cee8e9c72e47ef4c19140ce932/mmproj.f16.gguf",
+        "size": 927606816,
+        "sha256": "b4038c228fcf84b0528e327c314204d165f6fa97ebb74d766424f49d2eba0d9c"
+      }
+    }
+  }
+}
