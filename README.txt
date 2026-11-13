@@ -1,5 +1,5 @@
-HOLO BROWSER AGENT - a local AI that uses your web browser, run from this USB drive
-===================================================================================
+GHOSTAGENT - a local AI that uses your web browser, run from this USB drive
+===========================================================================
 
 WHAT IT IS
   You type a task ("find the weather in Denver this weekend"). A vision model looks at
@@ -24,14 +24,14 @@ FIRST TIME ONLY: LET THE AGENT USE YOUR CHROME (needs Chrome 144 or newer)
   If you forget, the agent shows these steps and copies the address for you.
 
 START
-  Double-click "Start Holo Browser Agent.cmd". If Chrome is not open, it starts it.
+  Double-click "Start GhostAgent.cmd". If Chrome is not open, it starts it.
   Chrome asks "Allow remote debugging?" - click Allow (it asks every time the agent starts).
   A new Chrome window opens for the agent. Then the model loads: from this USB drive that
   takes about 5 minutes (22 GB at ~70 MB/s). The console then shows "Task>". Type a task,
   press Enter.
 
-  Faster starts: set "copy_model_to_pc": true in HoloAgent\settings.json. The next start
-  copies the model to the laptop's drive once (%LOCALAPPDATA%\HoloAgent, 22 GB, about the
+  Faster starts: set "copy_model_to_pc": true in GhostAgent\settings.json. The next start
+  copies the model to the laptop's drive once (%LOCALAPPDATA%\GhostAgent, 22 GB, about the
   same 5 minutes); after that it loads in well under a minute. To undo, delete that folder.
 
 USING IT
@@ -66,17 +66,17 @@ HARDWARE
   roughly 2x that on a laptop. Simple lookups take 2-4 steps, multi-page tasks 5-20.
 
 SETTINGS
-  HoloAgent\settings.json (each setting has a note). Most useful: copy_model_to_pc,
+  GhostAgent\settings.json (each setting has a note). Most useful: copy_model_to_pc,
   browser, start_url, max_steps, backend, save_screenshots.
   "browser":  "chrome"  = a window in your own Chrome (default)
               "bundled" = the separate portable Chromium on this drive, with its own
-                          profile in HoloAgent\browser-profile (sign-ins are stored ON THIS
-                          DRIVE) and downloads in HoloAgent\downloads
+                          profile in GhostAgent\browser-profile (sign-ins are stored ON THIS
+                          DRIVE) and downloads in GhostAgent\downloads
               "edge"    = Microsoft Edge with its own profile on this drive
 
 TROUBLESHOOTING
-  - Logs: HoloAgent\logs\llama-server-*.log (the console prints the end of it on errors).
-  - "already running": another Holo window is open; close it first.
+  - Logs: GhostAgent\logs\llama-server-*.log (the console prints the end of it on errors).
+  - "already running": another GhostAgent window is open; close it first.
   - Chrome never asks "Allow remote debugging?": make sure the switch above is on and that
     a normal Chrome window is open (if Chrome shows its profile picker, pick your profile).
   - Clicked Cancel by mistake: press Enter in the console and Chrome asks again.
@@ -99,9 +99,9 @@ WHY THIS MODEL (and not gpt-oss-120b)
   tokens/s with this setup.
 
 FOLDERS
-  HoloAgent\agent      the agent (holo_agent.py)
-  HoloAgent\bin        llama.cpp builds (cuda13, cuda12, vulkan, cpu)
-  HoloAgent\models     model + vision projector (SHA-256 sums in models\SHA256SUMS.txt)
-  HoloAgent\python     portable Python with Playwright
-  HoloAgent\browsers   portable Chromium (used when "browser" is "bundled")
-  HoloAgent\licenses   licenses of the bundled parts
+  GhostAgent\agent      the agent (ghost_agent.py)
+  GhostAgent\bin        llama.cpp builds (cuda13, cuda12, vulkan, cpu)
+  GhostAgent\models     model + vision projector (SHA-256 sums in models\SHA256SUMS.txt)
+  GhostAgent\python     portable Python with Playwright
+  GhostAgent\browsers   portable Chromium (used when "browser" is "bundled")
+  GhostAgent\licenses   licenses of the bundled parts

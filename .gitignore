@@ -1,15 +1,15 @@
-# Downloaded by "Build USB.cmd"
-/HoloAgent/bin/
-/HoloAgent/python/
-/HoloAgent/browsers/
-/HoloAgent/models/*.gguf
-/HoloAgent/models/*.part
+# Downloaded by "Build GhostAgent.cmd"
+/GhostAgent/bin/
+/GhostAgent/python/
+/GhostAgent/browsers/
+/GhostAgent/models/*.gguf
+/GhostAgent/models/*.part
 
 # Written while the agent runs: browser sign-ins, downloads, logs and screenshots. Never commit these.
-/HoloAgent/browser-profile/
-/HoloAgent/browser-profile-edge/
-/HoloAgent/downloads/
-/HoloAgent/logs/
+/GhostAgent/browser-profile/
+/GhostAgent/browser-profile-edge/
+/GhostAgent/downloads/
+/GhostAgent/logs/
 
 __pycache__/
 *.pyc

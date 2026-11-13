@@ -2,7 +2,7 @@
   "_note": "Change a value, save, and restart the agent. Keys starting with _ are notes and are ignored.",
 
   "copy_model_to_pc": false,
-  "_copy_model_to_pc": "true = copy the 22 GB model once to this PC (%LOCALAPPDATA%\\HoloAgent). Loading from a USB stick takes ~5 min; from the PC's SSD, seconds.",
+  "_copy_model_to_pc": "true = copy the 22 GB model once to this PC (%LOCALAPPDATA%\\GhostAgent). Loading from a USB stick takes ~5 min; from the PC's SSD, seconds.",
 
   "start_url": "https://www.bing.com",
   "max_steps": 0,

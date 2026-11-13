@@ -1,7 +1,7 @@
 <#
 .SYNOPSIS
-  Fills HoloAgent\ with everything the agent needs (about 23 GB): the Holo4 model, llama.cpp,
-  portable Python with Playwright, and a portable Chromium. Run it through "Build USB.cmd".
+  Fills GhostAgent\ with everything the agent needs (about 23 GB): the Holo4 model, llama.cpp,
+  portable Python with Playwright, and a portable Chromium. Run it through "Build GhostAgent.cmd".
 
 .DESCRIPTION
   Every part comes from its official source at a pinned version and is checked against a SHA-256
@@ -16,7 +16,7 @@
   Set up everything except the model.
 
 .PARAMETER KeepDownloads
-  Keep the downloaded archives in %TEMP%\GhostAgentUSB-build instead of deleting them.
+  Keep the downloaded archives in %TEMP%\GhostAgent-build instead of deleting them.
 #>
 [CmdletBinding()]
 param(
@@ -29,8 +29,8 @@ $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 
 $Root  = Split-Path -Parent $PSScriptRoot
-$Holo  = Join-Path $Root 'HoloAgent'
-$Cache = Join-Path $env:TEMP 'GhostAgentUSB-build'
+$Ghost  = Join-Path $Root 'GhostAgent'
+$Cache = Join-Path $env:TEMP 'GhostAgent-build'
 
 # --- pinned versions --------------------------------------------------------------------------
 
@@ -49,7 +49,7 @@ $Builds = [ordered]@{
     cpu    = @("llama-$LlamaTag-bin-win-cpu-x64.zip")
 }
 
-# Model files: name on Hugging Face -> name in HoloAgent\models
+# Model files: name on Hugging Face -> name in GhostAgent\models
 $ModelFiles = [ordered]@{
     'q4_k_m.gguf'     = 'Holo4-35B-A3B-Q4_K_M.gguf'
     'mmproj.f16.gguf' = 'Holo4-35B-A3B-mmproj-f16.gguf'
@@ -66,8 +66,8 @@ $Sha = @{
     'python-3.14.8-embed-amd64.zip'             = 'a93abe456ab01bd96d7a085b3cdb6566b3063f4241360d114142fbdb07f0a310'
     'pip-26.3-py3-none-any.whl'                 = 'f3b60b20ffaadd4415ed7957212a38ac63fa4c5fa375bd0f4a797777940fad13'
 }
-# The model sums live next to the model, in HoloAgent\models\SHA256SUMS.txt
-foreach ($line in Get-Content (Join-Path $Holo 'models\SHA256SUMS.txt')) {
+# The model sums live next to the model, in GhostAgent\models\SHA256SUMS.txt
+foreach ($line in Get-Content (Join-Path $Ghost 'models\SHA256SUMS.txt')) {
     if ($line -match '^([0-9a-fA-F]{64})\s+\*?(.+?)\s*$') { $Sha[$Matches[2]] = $Matches[1].ToLower() }
 }
 
@@ -76,7 +76,14 @@ foreach ($line in Get-Content (Join-Path $Holo 'models\SHA256SUMS.txt')) {
 function Step($msg) { Write-Host ''; Write-Host "== $msg" -ForegroundColor Cyan }
 function Note($msg) { Write-Host "   $msg" -ForegroundColor DarkGray }
 
-function Get-Sha256($path) { (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLower() }
+# .NET instead of Get-FileHash: that cmdlet disappears when Windows PowerShell inherits PowerShell 7's
+# module path (for example when started from a pwsh window).
+function Get-Sha256($path) {
+    $sha = [Security.Cryptography.SHA256]::Create()
+    $stream = [IO.File]::OpenRead($path)
+    try { return ([BitConverter]::ToString($sha.ComputeHash($stream)) -replace '-', '').ToLower() }
+    finally { $stream.Dispose(); $sha.Dispose() }
+}
 
 function Test-Sum($path) {
     $name = Split-Path -Leaf $path
@@ -109,14 +116,14 @@ function Expand-To($archive, $dir) {
 
 # --- checks -----------------------------------------------------------------------------------
 
-if (-not [Environment]::Is64BitOperatingSystem) { throw 'GhostAgentUSB needs 64-bit Windows.' }
+if (-not [Environment]::Is64BitOperatingSystem) { throw 'GhostAgent needs 64-bit Windows.' }
 foreach ($tool in 'curl.exe', 'tar.exe') {
     if (-not (Get-Command $tool -ErrorAction SilentlyContinue)) { throw "$tool is missing (it ships with Windows 10 1803 and newer)." }
 }
 $needGB = 3 + $(if ($SkipModel) { 0 } else { 21 })
-$drive = New-Object System.IO.DriveInfo ([IO.Path]::GetPathRoot($Holo))
+$drive = New-Object System.IO.DriveInfo ([IO.Path]::GetPathRoot($Ghost))
 $freeGB = [math]::Floor($drive.AvailableFreeSpace / 1GB)
-Write-Host "GhostAgentUSB build -> $Holo" -ForegroundColor White
+Write-Host "GhostAgent build -> $Ghost" -ForegroundColor White
 Note "free space on $($drive.Name): $freeGB GB (needs about $needGB GB)"
 if ($freeGB -lt $needGB) { throw "Not enough free space on $($drive.Name): $freeGB GB free, about $needGB GB needed." }
 New-Item -ItemType Directory -Force -Path $Cache | Out-Null
@@ -125,7 +132,7 @@ New-Item -ItemType Directory -Force -Path $Cache | Out-Null
 
 Step "llama.cpp $LlamaTag (CUDA 13, CUDA 12, Vulkan, CPU)"
 foreach ($dir in $Builds.Keys) {
-    $target = Join-Path $Holo "bin\$dir"
+    $target = Join-Path $Ghost "bin\$dir"
     if (Test-Path (Join-Path $target 'llama-server.exe')) { Note "bin\${dir}: already in place"; continue }
     foreach ($zip in $Builds[$dir]) {
         $file = Join-Path $Cache $zip
@@ -138,7 +145,7 @@ foreach ($dir in $Builds.Keys) {
 # --- Python + Playwright ----------------------------------------------------------------------
 
 Step 'Portable Python 3.14 with Playwright'
-$py = Join-Path $Holo 'python'
+$py = Join-Path $Ghost 'python'
 if (-not (Test-Path (Join-Path $py 'python.exe'))) {
     $file = Join-Path $Cache 'python-3.14.8-embed-amd64.zip'
     Get-Download $PythonUrl $file
@@ -168,7 +175,7 @@ if (Test-Path (Join-Path $site 'playwright-1.63.0.dist-info')) {
 # --- Chromium ---------------------------------------------------------------------------------
 
 Step 'Portable Chromium for Playwright'
-$env:PLAYWRIGHT_BROWSERS_PATH = Join-Path $Holo 'browsers'
+$env:PLAYWRIGHT_BROWSERS_PATH = Join-Path $Ghost 'browsers'
 & (Join-Path $py 'python.exe') -m playwright install chromium --no-shell
 if ($LASTEXITCODE -ne 0) { throw 'Installing Chromium failed.' }
 Note 'browsers: ready'
@@ -179,7 +186,7 @@ if ($SkipModel) {
     Step 'Model: skipped (-SkipModel)'
 } else {
     Step 'Holo4-35B-A3B model (about 21 GB)'
-    $models = Join-Path $Holo 'models'
+    $models = Join-Path $Ghost 'models'
     foreach ($src in $ModelFiles.Keys) {
         $name = $ModelFiles[$src]
         $dest = Join-Path $models $name
@@ -202,7 +209,7 @@ if ($SkipModel) {
 # --- done -------------------------------------------------------------------------------------
 
 if (-not $KeepDownloads) { Remove-Item -Recurse -Force $Cache -ErrorAction SilentlyContinue }
-$total = (Get-ChildItem -LiteralPath $Holo -Recurse -Force -File | Measure-Object Length -Sum).Sum
+$total = (Get-ChildItem -LiteralPath $Ghost -Recurse -Force -File | Measure-Object Length -Sum).Sum
 Write-Host ''
-Write-Host ("Done. HoloAgent is {0:N1} GB." -f ($total / 1GB)) -ForegroundColor Green
-Write-Host 'Start the agent with "Start Holo Browser Agent.cmd". README.txt explains the first-time Chrome setting.'
+Write-Host ("Done. GhostAgent is {0:N1} GB." -f ($total / 1GB)) -ForegroundColor Green
+Write-Host 'Start the agent with "Start GhostAgent.cmd". README.txt explains the first-time Chrome setting.'

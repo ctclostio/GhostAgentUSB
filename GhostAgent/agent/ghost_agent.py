@@ -1,4 +1,4 @@
-"""Holo browser agent: a local vision model (llama.cpp) that drives a real browser (Playwright).
+"""GhostAgent: a local vision model (llama.cpp) that drives a real browser (Playwright).
 
 Everything runs from this folder. Nothing is sent to any cloud service: the model is served by
 llama-server on 127.0.0.1. The browser is a window in the user's own running Google Chrome
@@ -133,7 +133,7 @@ def already_running():
         return False
     k32 = ctypes.WinDLL("kernel32", use_last_error=True)
     k32.CreateMutexW.restype = ctypes.c_void_p
-    _MUTEX = k32.CreateMutexW(None, False, "Local\\HoloBrowserAgent")
+    _MUTEX = k32.CreateMutexW(None, False, "Local\\GhostAgent")
     return ctypes.get_last_error() == 183  # ERROR_ALREADY_EXISTS
 
 
@@ -246,7 +246,16 @@ def model_files(settings):
             raise SystemExit(f"Missing model file: {f}")
     if not settings["copy_model_to_pc"]:
         return files
-    dest = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "HoloAgent" / "models"
+    base = Path(os.environ.get("LOCALAPPDATA", str(Path.home())))
+    dest = base / "GhostAgent" / "models"
+    old = base / "HoloAgent" / "models"  # where the model was copied before the rename to GhostAgent
+    if old.is_dir() and not dest.exists():
+        try:
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            old.rename(dest)
+            old.parent.rmdir()
+        except OSError:
+            pass
     dest.mkdir(parents=True, exist_ok=True)
     local = []
     for src in files:
@@ -608,7 +617,7 @@ SELECT_OPTIONS_JS = """([x, y]) => {
 # model never sees it, ignores the mouse while a task runs, and uses DOM calls only (no innerHTML)
 # so pages that enforce Trusted Types accept it.
 OVERLAY_JS = """([kind, title, text]) => {
-  const ID = '__holo_agent_overlay__';
+  const ID = '__ghost_agent_overlay__';
   let host = document.getElementById(ID);
   if (host) host.remove();
   if (kind === 'remove') return;
@@ -670,14 +679,14 @@ def _detach_playwright_driver_from_console():
         return
     import asyncio
     original = asyncio.create_subprocess_exec
-    if getattr(original, "_holo_patched", False):
+    if getattr(original, "_ghost_patched", False):
         return
 
     async def create_subprocess_exec(*args, **kwargs):
         kwargs["creationflags"] = kwargs.get("creationflags", 0) | CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP
         return await original(*args, **kwargs)
 
-    create_subprocess_exec._holo_patched = True
+    create_subprocess_exec._ghost_patched = True
     asyncio.create_subprocess_exec = create_subprocess_exec
 
 
@@ -688,8 +697,8 @@ def _detach_playwright_driver_from_console():
 # DevTools address to DevToolsActivePort, and asks "Allow remote debugging?" on every connection.
 # --------------------------------------------------------------------------------------------
 
-# HOLO_CHROME_USER_DATA points the agent at another Chrome profile folder (used for testing).
-CHROME_USER_DATA_OVERRIDE = os.environ.get("HOLO_CHROME_USER_DATA")
+# GHOST_CHROME_USER_DATA points the agent at another Chrome profile folder (used for testing).
+CHROME_USER_DATA_OVERRIDE = os.environ.get("GHOST_CHROME_USER_DATA")
 CHROME_USER_DATA = Path(CHROME_USER_DATA_OVERRIDE or Path(os.environ.get("LOCALAPPDATA", "")) / "Google" / "Chrome" / "User Data")
 INSPECT_URL = "chrome://inspect/#remote-debugging"
 
@@ -952,7 +961,7 @@ class Browser:
     def _launch_own(self):
         PROFILE.mkdir(exist_ok=True)
         DOWNLOADS.mkdir(exist_ok=True)
-        cache = Path(os.environ.get("TEMP", str(ROOT))) / "holo-agent-browser-cache"
+        cache = Path(os.environ.get("TEMP", str(ROOT))) / "ghost-agent-browser-cache"
         opts = dict(
             user_data_dir=str(PROFILE), headless=False,
             viewport={"width": self.w, "height": self.h}, device_scale_factor=1,
@@ -966,7 +975,7 @@ class Browser:
             self.ctx = self.pw.chromium.launch_persistent_context(**opts)
         except Exception as e:
             if "already in use" in str(e) or "existing browser session" in str(e):
-                raise SystemExit("The browser profile is in use. Close any other Holo agent window and try again.")
+                raise SystemExit("The browser profile is in use. Close any other GhostAgent window and try again.")
             if self.mode != "edge":
                 warn(f"Bundled Chromium failed to start ({str(e).splitlines()[0]}); trying Microsoft Edge.")
             opts["user_data_dir"] = str(PROFILE) + "-edge"
@@ -1323,8 +1332,8 @@ class Agent:
                 dropped = drop_oldest_steps(messages, dropped)
             messages.append(self.browser.observation(bring_to_front=step == 1))
             trim_to_last_n_images(messages, int(s["image_budget"]))
-            self.browser.overlay("status", f"Holo agent - step {step}", one_line(task, 120))
-            set_console_title(f"Holo Browser Agent - step {step}")
+            self.browser.overlay("status", f"GhostAgent - step {step}", one_line(task, 120))
+            set_console_title(f"GhostAgent - step {step}")
             body = {
                 "model": "holo4-35b-a3b",
                 "messages": messages,
@@ -1412,16 +1421,16 @@ HELP = """  Type a task in plain English and press Enter, for example:
 def main():
     _enable_ansi()
     if already_running():
-        raise SystemExit("The Holo browser agent is already running in another window.")
+        raise SystemExit("GhostAgent is already running in another window.")
     bind_children_to_this_process()
     settings = load_settings()
     print()
-    head("  Holo4 local browser agent  (llama.cpp + Playwright, runs entirely on this computer)")
+    head("  GhostAgent - local browser agent  (Holo4-35B-A3B on llama.cpp + Playwright, runs entirely on this computer)")
     print()
 
     server = LlamaServer(settings)
     browser = Browser(settings)
-    set_console_title("Holo Browser Agent - loading")
+    set_console_title("GhostAgent - loading")
     try:
         # The browser comes first: anything that needs the user (Chrome's "Allow" prompt) happens
         # right away instead of after the model has loaded.
@@ -1437,7 +1446,7 @@ def main():
             raise SystemExit(1)
         info(f"model ready in {secs:.0f}s  (backend {backend}, server {server.base}, log {server.log_path.name})")
         agent = Agent(settings, server, browser)
-        set_console_title("Holo Browser Agent - ready")
+        set_console_title("GhostAgent - ready")
         focus_console()
         print()
         print(HELP)
@@ -1467,7 +1476,7 @@ def main():
                 print()
                 print(c("Answer:", "1;35"), result)
                 info(f"({time.time() - t0:.0f}s)")
-                browser.overlay("answer", "Holo agent - answer (also in the console window)", result)
+                browser.overlay("answer", "GhostAgent - answer (also in the console window)", result)
             except (StepCancelled, KeyboardInterrupt):
                 print()
                 warn("Task stopped.")
@@ -1480,8 +1489,8 @@ def main():
                     for line in server.tail(20):
                         print("    " + line)
                     break
-                browser.overlay("answer", "Holo agent - task failed", str(e)[:500])
-            set_console_title("Holo Browser Agent - ready")
+                browser.overlay("answer", "GhostAgent - task failed", str(e)[:500])
+            set_console_title("GhostAgent - ready")
             focus_console()
     finally:
         info("shutting down ...")
