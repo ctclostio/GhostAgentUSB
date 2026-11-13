@@ -1,0 +1,1 @@
+Source: https://huggingface.co/Hcompany/Holo4-35B-A3B-GGUF (q4_k_m.gguf, mmproj.f16.gguf), Apache-2.0
