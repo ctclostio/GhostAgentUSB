@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Busy page</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<main>
+<h1>A page that can freeze</h1>
+<p>The button runs a busy loop on the page's main thread for 10 seconds (or ?ms=N), so nothing on
+the page responds meanwhile. ?auto=1 starts the loop half a second after the page loads.</p>
+<p><button type="button" id="freeze">Freeze the page</button></p>
+<p id="status">Idle.</p>
+<script>
+  var params = new URLSearchParams(location.search);
+  var ms = parseInt(params.get('ms') || '10000', 10);
+  window.freeze = function (n) {
+    var end = Date.now() + (n || ms);
+    while (Date.now() < end) { /* busy on purpose */ }
+    document.getElementById('status').textContent = 'Finished a busy loop.';
+  };
+  document.getElementById('freeze').addEventListener('click', function () {
+    document.getElementById('status').textContent = 'Busy ...';
+    setTimeout(function () { window.freeze(); }, 0);
+  });
+  if (params.get('auto') === '1') setTimeout(function () { window.freeze(); }, 500);
+</script>
+</main>
+</body>
+</html>

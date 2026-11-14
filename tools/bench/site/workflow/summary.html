@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Readings summary - Valley Weather Network</title>
+<link rel="stylesheet" href="/style.css">
+<script src="/bench.js"></script>
+<style>
+  .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0 32px; }
+</style>
+</head>
+<body>
+<header class="site"><a href="/">Valley Weather Network</a></header>
+<main>
+<h1>Readings summary</h1>
+<p>Enter the reading from each of the 10 stations, then submit.</p>
+<form action="/submit/workflow" method="post">
+  <div class="grid" id="fields"></div>
+  <p><button type="submit">Submit readings</button></p>
+</form>
+</main>
+<script>
+  var box = document.getElementById('fields');
+  for (var i = 1; i <= 10; i++) {
+    var wrap = document.createElement('div');
+    wrap.innerHTML = '<label for="s' + i + '">Station ' + i + ' reading</label><input id="s' + i + '" name="s' + i + '" size="10" autocomplete="off">';
+    box.appendChild(wrap);
+  }
+</script>
+</body>
+</html>

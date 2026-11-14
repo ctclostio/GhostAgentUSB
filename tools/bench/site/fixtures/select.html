@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Dropdowns</title>
+<link rel="stylesheet" href="/style.css">
+<style>
+  .menu { position: relative; display: inline-block; }
+  .menu .items { display: none; position: absolute; top: 100%; left: 0; background: #fff; border: 1px solid #8b96a3; min-width: 180px; }
+  .menu.open .items { display: block; }
+  .menu .items div { padding: 4px 10px; cursor: pointer; }
+  .menu .items div:hover { background: #dbe7f8; }
+</style>
+</head>
+<body>
+<main>
+<h1>Dropdowns</h1>
+<label for="size">Native dropdown</label>
+<select id="size">
+  <option value="">Choose a size</option>
+  <option value="s">Small</option><option value="m">Medium</option><option value="l">Large</option>
+</select>
+<label>Home-made dropdown (not a select element)</label>
+<div class="menu" id="menu"><button type="button" id="menu-button">Choose a colour</button>
+  <div class="items"><div>Red</div><div>Green</div><div>Blue</div></div></div>
+<p id="status">Nothing chosen yet.</p>
+<script>
+  var statusEl = document.getElementById('status');
+  document.getElementById('size').addEventListener('change', function (e) {
+    statusEl.textContent = 'Size: ' + e.target.options[e.target.selectedIndex].text;
+  });
+  var menu = document.getElementById('menu');
+  document.getElementById('menu-button').addEventListener('click', function () { menu.classList.toggle('open'); });
+  menu.querySelectorAll('.items div').forEach(function (d) {
+    d.addEventListener('click', function () {
+      document.getElementById('menu-button').textContent = d.textContent;
+      menu.classList.remove('open');
+      statusEl.textContent = 'Colour: ' + d.textContent;
+    });
+  });
+</script>
+</main>
+</body>
+</html>

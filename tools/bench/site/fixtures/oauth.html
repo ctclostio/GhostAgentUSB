@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>App sign-in</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<main>
+<h1>Sign in to the app</h1>
+<p><button type="button" id="signin">Sign in with Example ID</button></p>
+<p id="status">Not signed in.</p>
+<script>
+  // Like an OAuth flow: a popup opens, "signs in", reports back to this page and closes itself.
+  window.signedIn = function (user) {
+    document.getElementById('status').textContent = 'Signed in as ' + user + '.';
+    document.title = 'signed-in';
+  };
+  document.getElementById('signin').addEventListener('click', function () {
+    window.open('oauth-popup.html', 'example-id', 'width=480,height=560');
+  });
+</script>
+</main>
+</body>
+</html>

@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Community feed - Birdline</title>
+<link rel="stylesheet" href="/style.css">
+<script src="/bench.js"></script>
+<style>
+  .post { border-bottom: 1px solid #dde3ea; padding: 10px 0; }
+  .post h3 { margin: 0; font-size: 18px; }
+  .post p { margin: 2px 0 0; font-size: 16px; color: #3c4650; }
+  #loading { padding: 16px 0; color: #5b6672; }
+  #end { padding: 18px; margin: 16px 0; text-align: center; font-weight: 700; background: #eef1f5; }
+</style>
+</head>
+<body>
+<header class="site"><a href="/">Birdline</a></header>
+<main>
+<h1>Community feed</h1>
+<p class="muted">New posts load as you scroll down.</p>
+<div id="posts"></div>
+<div id="loading">Loading more posts ...</div>
+</main>
+<script>
+  // An infinite feed: 15 posts per batch, loaded after a short delay whenever the bottom comes
+  // into view, until all 87 are shown and the END marker appears.
+  var TOTAL = 87, BATCH = 15, shown = 0, busy = false;
+  var BIRDS = ['wren', 'kestrel', 'heron', 'goldfinch', 'nuthatch', 'curlew', 'jay', 'plover', 'swift', 'owl'];
+  var PLACES = ['the canal', 'the old orchard', 'the reservoir', 'the allotments', 'the sea wall', 'the park'];
+  var posts = document.getElementById('posts'), loading = document.getElementById('loading');
+  function addBatch() {
+    var end = Math.min(TOTAL, shown + BATCH);
+    for (var i = shown + 1; i <= end; i++) {
+      var d = document.createElement('div'); d.className = 'post';
+      d.innerHTML = '<h3></h3><p></p>';
+      d.firstChild.textContent = 'Post ' + i + ': a ' + BIRDS[i % BIRDS.length] + ' at ' + PLACES[i % PLACES.length];
+      d.lastChild.textContent = 'Seen around ' + (6 + i % 12) + ' o\'clock. ' + (i % 3 ? 'Photo to follow.' : 'No photo, sorry.');
+      posts.appendChild(d);
+    }
+    shown = end;
+    if (shown >= TOTAL) {
+      loading.remove();
+      var marker = document.createElement('div'); marker.id = 'end';
+      marker.textContent = 'END - you have reached the end of the feed.';
+      document.querySelector('main').appendChild(marker);
+    }
+  }
+  function maybeLoad() {
+    if (busy || shown >= TOTAL) return;
+    if (loading.getBoundingClientRect().top < window.innerHeight + 200) {
+      busy = true;
+      setTimeout(function () { addBatch(); busy = false; maybeLoad(); }, 400);
+    }
+  }
+  addBatch();
+  window.addEventListener('scroll', maybeLoad, { passive: true });
+</script>
+</body>
+</html>

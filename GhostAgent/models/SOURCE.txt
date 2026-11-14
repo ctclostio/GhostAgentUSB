@@ -1,1 +1,4 @@
-Source: https://huggingface.co/Hcompany/Holo4-35B-A3B-GGUF (q4_k_m.gguf, mmproj.f16.gguf), Apache-2.0
+Sources (each file is pinned to a commit and a SHA-256 in tools\profiles.json):
+  fast:     https://huggingface.co/Hcompany/Holo4-35B-A3B-GGUF (q4_k_m.gguf, mmproj.f16.gguf), Apache-2.0
+  fast-q8:  https://huggingface.co/bartowski/Hcompany_Holo4-35B-A3B-GGUF (Q8_0, community quant) with the official mmproj.f16.gguf, Apache-2.0
+  accurate: https://huggingface.co/Hcompany/Holo4-27B-GGUF (q4_k_m.gguf, mmproj.f16.gguf), CC BY-NC 4.0 (non-commercial)

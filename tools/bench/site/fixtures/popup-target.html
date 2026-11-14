@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Popup page</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<main>
+<h1>Popup page</h1>
+<p id="from"></p>
+<script>
+  var from = new URLSearchParams(location.search).get('from') || 'unknown';
+  document.title = 'Popup page (' + from + ')';
+  document.getElementById('from').textContent = 'Opened by: ' + from;
+</script>
+</main>
+</body>
+</html>

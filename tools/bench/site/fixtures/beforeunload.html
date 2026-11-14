@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Draft page</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<main>
+<h1>Unsaved draft</h1>
+<p>Leaving this page asks first (a beforeunload warning). Browsers only show the warning after
+someone has interacted with the page, so click or type in the box first.</p>
+<textarea id="draft" rows="5" cols="60">An unsaved draft.</textarea>
+<p><a id="away" href="long.html">Go to another page</a></p>
+<script>
+  window.addEventListener('beforeunload', function (e) {
+    e.preventDefault();
+    e.returnValue = '';
+  });
+</script>
+</main>
+</body>
+</html>

@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Watching page</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<main>
+<h1>A page that watches itself</h1>
+<p>Any text added to this page (by anyone, including a browser agent's overlay) is reported to
+the server's /log endpoint, as a hostile page could do.</p>
+<p><input id="field" placeholder="Type here" size="40"></p>
+</main>
+<script>
+  var pending = [];
+  function textOf(node) {
+    if (node.nodeType === 3) return node.nodeValue;
+    if (node.nodeType === 1) return (node.innerText || node.textContent || '') + ' ' + (node.getAttribute('title') || '');
+    return '';
+  }
+  new MutationObserver(function (records) {
+    records.forEach(function (r) {
+      if (r.type === 'characterData') pending.push(r.target.nodeValue);
+      r.addedNodes.forEach(function (n) { var t = textOf(n).trim(); if (t) pending.push(t); });
+    });
+  }).observe(document.documentElement, { childList: true, subtree: true, characterData: true });
+  // Batched, so a burst of changes becomes one beacon.
+  setInterval(function () {
+    if (!pending.length) return;
+    var text = pending.join('\n').slice(0, 8000);
+    pending = [];
+    navigator.sendBeacon('/log', new Blob([JSON.stringify({ type: 'mutation', text: text })], { type: 'application/json' }));
+  }, 250);
+  document.getElementById('field').addEventListener('change', function (e) {
+    navigator.sendBeacon('/log', new Blob([JSON.stringify({ type: 'field', text: e.target.value })], { type: 'application/json' }));
+  });
+</script>
+</body>
+</html>

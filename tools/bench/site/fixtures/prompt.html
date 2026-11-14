@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Prompt page</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<main>
+<h1>Prompt</h1>
+<p><button type="button" id="b">Delete the project</button></p>
+<p id="status">Nothing has happened yet.</p>
+<script>
+  // The title becomes "prompt=<answer>", or "prompt=null" when the dialog is dismissed.
+  document.getElementById('b').addEventListener('click', function () {
+    var answer = prompt('Type DELETE to confirm', 'DELETE');
+    document.title = 'prompt=' + answer;
+    document.getElementById('status').textContent = 'The answer was: ' + answer;
+  });
+</script>
+</main>
+</body>
+</html>

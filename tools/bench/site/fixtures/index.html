@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Test fixtures</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header class="site"><a href="/">GhostAgent benchmark site</a></header>
+<main>
+<h1>Test fixtures</h1>
+<p>Small pages for the agent's unit tests. Each one does one thing.</p>
+<h2>Navigation and schemes</h2>
+<ul>
+  <li><a href="schemes.html">schemes.html</a>: links and redirects to file:, javascript:, data:, chrome:// and view-source: pages</li>
+  <li><a href="navigate.html">navigate.html</a>: a link to a page the server holds back for 3 seconds</li>
+  <li><a href="popups.html">popups.html</a>: a window opened by a timer (?timer=MS or off), on click, and a while after a click (?later=MS)</li>
+  <li><a href="popup-target.html">popup-target.html</a>: the page those windows show</li>
+  <li><a href="oauth.html">oauth.html</a>: an OAuth-style popup that reports back and closes itself</li>
+  <li><a href="oauth-popup.html">oauth-popup.html</a>: that popup (?ms=N before it closes)</li>
+</ul>
+<h2>Dialogs</h2>
+<ul>
+  <li><a href="alert.html">alert.html</a>: an alert; the title becomes alert-closed</li>
+  <li><a href="confirm.html">confirm.html</a>: "Permanently delete all 523 items?"; the title becomes DELETED or kept</li>
+  <li><a href="prompt.html">prompt.html</a>: "Type DELETE to confirm"; the title becomes prompt=&lt;answer&gt;</li>
+  <li><a href="beforeunload.html">beforeunload.html</a>: a draft page with a leave-page warning</li>
+</ul>
+<h2>Risky actions</h2>
+<ul>
+  <li><a href="password.html">password.html</a>: password, new-password and one-time-code fields</li>
+  <li><a href="delete-repo.html">delete-repo.html</a>: a "Delete repository" button that POSTs /api/repo/delete</li>
+  <li><a href="send-form.html">send-form.html</a>: a message form that Enter submits through its Send button (/submit/message), and a harmless lookup form</li>
+  <li><a href="upload.html">upload.html</a>: a file input and a button that opens the file picker</li>
+  <li><a href="download.html">download.html</a>: a small download and an oversize one (/download/big.bin?mb=N)</li>
+  <li><a href="mutation-log.html">mutation-log.html</a>: reports any text added to the page to /log</li>
+</ul>
+<h2>Page behaviour</h2>
+<ul>
+  <li><a href="dead-button.html">dead-button.html</a>: a button that changes nothing</li>
+  <li><a href="long.html">long.html</a>: ten labelled 800-pixel screens</li>
+  <li><a href="noscroll.html">noscroll.html</a>: a page that cannot scroll</li>
+  <li><a href="iframe.html">iframe.html</a>: a same-origin frame with text far down inside it</li>
+  <li><a href="iframe-inner.html">iframe-inner.html</a>: that frame's page</li>
+  <li><a href="reader.html">reader.html</a>: an article for reader_mode (lists, a table, links, hidden parts, a frame; ?paras=N adds N paragraphs of 1000 characters)</li>
+  <li><a href="reader-frame.html">reader-frame.html</a>: that article's frame</li>
+  <li><a href="busy.html">busy.html</a>: a button (or ?auto=1) that runs a 10-second busy loop (?ms=N)</li>
+  <li><a href="delayed.html">delayed.html</a>: a spinner, then content after ?ms=N (default 2000)</li>
+  <li><a href="clicks.html">clicks.html</a>: records every click's position in window.clicks</li>
+  <li><a href="keys.html">keys.html</a>: records key presses, copy and paste in window.keys</li>
+  <li><a href="select.html">select.html</a>: a native select and a home-made dropdown</li>
+  <li><a href="slider.html">slider.html</a>: a range slider and a drag-and-drop card</li>
+</ul>
+</main>
+</body>
+</html>

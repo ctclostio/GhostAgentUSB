@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Book a trip - step 1 of 2</title>
+<link rel="stylesheet" href="/style.css">
+<script src="/bench.js"></script>
+</head>
+<body>
+<header class="site"><a href="/">Northbound Travel</a></header>
+<main>
+<h1>Book a trip</h1>
+<p class="muted">Step 1 of 2: about you</p>
+<form id="step1" action="step2.html" method="get">
+  <label for="name">Full name</label>
+  <input id="name" name="name" size="34" required autocomplete="off">
+  <label for="email">Email address</label>
+  <input id="email" name="email" type="email" size="34" required autocomplete="off">
+  <label for="country">Country of residence</label>
+  <select id="country" name="country" required>
+    <option value="">Choose a country</option>
+    <option value="AU">Australia</option>
+    <option value="BR">Brazil</option>
+    <option value="CA">Canada</option>
+    <option value="FR">France</option>
+    <option value="DE">Germany</option>
+    <option value="IN">India</option>
+    <option value="JP">Japan</option>
+    <option value="MX">Mexico</option>
+    <option value="GB">United Kingdom</option>
+    <option value="US">United States</option>
+  </select>
+  <p><button type="submit">Continue to step 2</button></p>
+</form>
+</main>
+</body>
+</html>

@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Alert page</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<main>
+<h1>Alert</h1>
+<p><button type="button" id="b">Show an alert</button></p>
+<p id="status">No alert yet.</p>
+<script>
+  document.getElementById('b').addEventListener('click', function () {
+    alert('Your session will expire in 5 minutes.');
+    document.title = 'alert-closed';
+    document.getElementById('status').textContent = 'The alert was closed.';
+  });
+</script>
+</main>
+</body>
+</html>

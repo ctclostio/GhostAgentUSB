@@ -1,0 +1,24 @@
+# Python packages for GhostAgent's portable Python 3.14, pinned to exact wheels.
+#
+# tools\Build-GhostAgent.ps1 installs this file with
+#   pip --isolated install --require-hashes --no-deps --only-binary=:all: --upgrade --target ... -r requirements.lock
+# so pip installs exactly these files, checks each one against its SHA-256, ignores any pip
+# settings on the build PC, and never resolves extra dependencies on its own.
+#
+# Each package lists two hashes: the Windows x64 wheel and the Windows ARM64 wheel. pip picks the
+# one that matches the Python it runs in. Hashes were taken from the PyPI JSON API
+# (https://pypi.org/pypi/<name>/<version>/json) and must be refreshed whenever a version changes.
+#
+# Playwright 1.65 depends only on greenlet. It no longer uses pyee, and it imports
+# typing_extensions only for type checking, so neither is installed.
+#
+# When Playwright changes, also update the pinned Chromium (revision, version and SHA-256) in
+# tools\Build-GhostAgent.ps1 to match the new package's driver\package\browsers.json; the build
+# stops if they disagree.
+
+playwright==1.65.1 \
+    --hash=sha256:f9ea4f4b4f70ecc27ef0bd46a1b929798f1a8bf68b3e771261fc098bc98e1a0b \
+    --hash=sha256:d50ad4dd217d4ee9e4672efd7ec4ab0523b5e73f64f6e0c5eae258961fa73a49
+greenlet==3.5.6 \
+    --hash=sha256:f8f0bd690e1a41294ac87905e8121c81a3761ec2583c768f13467428606c8c7a \
+    --hash=sha256:8cda13494d86a4f12429641117cb6ac4bbbc9c30a33f711f7d3a2e5fbe4b0b7e

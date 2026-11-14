@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Page that cannot scroll</title>
+<link rel="stylesheet" href="/style.css">
+<style>
+  html, body { height: 100%; overflow: hidden; }
+  .tall { height: 3000px; background: linear-gradient(#eef1f5, #c7d0da); }
+</style>
+</head>
+<body>
+<main>
+<h1>This page cannot scroll</h1>
+<p>The content below is taller than the window, but scrolling is switched off.</p>
+<div class="tall"><p style="padding-top: 2800px">You cannot reach this line by scrolling.</p></div>
+</main>
+</body>
+</html>

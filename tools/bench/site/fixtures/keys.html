@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Keyboard recorder</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<main>
+<h1>Keyboard recorder</h1>
+<p>Every key press, copy and paste on this page is recorded in window.keys.</p>
+<label for="source">Source text</label>
+<input id="source" value="COPY-ME-7731" size="30">
+<label for="target">Target field</label>
+<input id="target" size="30" placeholder="Paste or type here">
+<label for="area">Notes</label>
+<textarea id="area" rows="3" cols="40"></textarea>
+<label>Rich text editor</label>
+<div id="editor" contenteditable="true" style="border: 1px solid #8b96a3; min-height: 60px; padding: 6px">Editable text.</div>
+<p id="plain">Plain text that is not a field.</p>
+<p id="last">No keys yet.</p>
+<script>
+  window.keys = [];
+  function mods(e) {
+    return ['ctrlKey', 'shiftKey', 'altKey', 'metaKey'].filter(function (k) { return e[k]; })
+      .map(function (k) { return k.replace('Key', ''); });
+  }
+  document.addEventListener('keydown', function (e) {
+    window.keys.push({ type: 'keydown', key: e.key, code: e.code, mods: mods(e), target: e.target.id || e.target.tagName });
+    document.getElementById('last').textContent = 'Last key: ' + mods(e).concat([e.key]).join('+');
+  }, true);
+  ['copy', 'cut', 'paste'].forEach(function (type) {
+    document.addEventListener(type, function (e) {
+      var text = type === 'paste' && e.clipboardData ? e.clipboardData.getData('text') : String(window.getSelection());
+      window.keys.push({ type: type, text: text, target: e.target.id || e.target.tagName });
+    }, true);
+  });
+</script>
+</main>
+</body>
+</html>

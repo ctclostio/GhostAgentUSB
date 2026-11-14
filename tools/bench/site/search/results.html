@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Search results - Field Notes Magazine</title>
+<link rel="stylesheet" href="/style.css">
+<script src="/bench.js"></script>
+</head>
+<body>
+<header class="site"><a href="/">Field Notes Magazine</a></header>
+<main>
+<h1>Search results</h1>
+<form action="results.html" method="get" role="search">
+  <input id="q" name="q" size="36" autocomplete="off"> <button type="submit">Search</button>
+</form>
+<p id="summary"></p>
+<div id="results"></div>
+<p><a href="index.html">Back to the magazine</a></p>
+</main>
+<script>
+  var ARTICLES = [
+    ['Watching the Blue Heron', 'Marta Okafor', 'A season beside one patient blue heron on the mill pond.'],
+    ['The Great Heron Colony', 'Lee Park', 'Two hundred nests in one stand of pines, counted by canoe.'],
+    ['Blue Hour on the Estuary', 'Sam Whitfield', 'What the tide flats sound like just before dark.'],
+    ['Counting Swifts at Dusk', 'Ana Lindqvist', 'A chimney, a clicker and four thousand swifts.'],
+    ['A Winter on the Salt Marsh', 'Marta Okafor', 'Harriers, frost and the long walk out to the hide.'],
+    ['The River Otters Return', 'Jonah Reyes', 'After forty years, otter tracks on the lower river.']
+  ];
+  var q = (new URLSearchParams(location.search).get('q') || '').trim();
+  document.getElementById('q').value = q;
+  var hits = q ? ARTICLES.filter(function (a) {
+    return (a[0] + ' ' + a[2]).toLowerCase().indexOf(q.toLowerCase()) >= 0;
+  }) : [];
+  document.getElementById('summary').textContent = q
+    ? hits.length + ' result' + (hits.length === 1 ? '' : 's') + ' for "' + q + '"'
+    : 'Type something to search for.';
+  var box = document.getElementById('results');
+  hits.forEach(function (a) {
+    var card = document.createElement('div'); card.className = 'card';
+    var h = document.createElement('h2'); h.textContent = a[0];
+    var by = document.createElement('p'); by.className = 'muted'; by.textContent = 'By ' + a[1];
+    var p = document.createElement('p'); p.textContent = a[2];
+    card.appendChild(h); card.appendChild(by); card.appendChild(p); box.appendChild(card);
+  });
+</script>
+</body>
+</html>

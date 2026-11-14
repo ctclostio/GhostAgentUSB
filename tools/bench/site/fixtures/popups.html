@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Popups</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<main>
+<h1>Popups</h1>
+<p>This page opens a window by itself after a delay (set with ?timer=MS, default 1500; ?timer=off
+turns it off), and on request. The "later" button opens one only after ?later=MS (default 3000),
+like a page that opens a window some time after a click.</p>
+<p><button type="button" id="open">Open help in a new tab</button>
+   <a id="link" href="popup-target.html?from=link" target="_blank">Open a link in a new tab</a>
+   <button type="button" id="later">Open a tab later</button></p>
+<p id="status">No windows opened yet.</p>
+<script>
+  var statusEl = document.getElementById('status');
+  var timer = new URLSearchParams(location.search).get('timer') || '1500';
+  if (timer !== 'off') {
+    setTimeout(function () {
+      window.open('popup-target.html?from=timer', '_blank');
+      statusEl.textContent = 'A window was opened by a timer.';
+    }, parseInt(timer, 10) || 0);
+  }
+  document.getElementById('open').addEventListener('click', function () {
+    window.open('popup-target.html?from=click', '_blank');
+    statusEl.textContent = 'A window was opened by a click.';
+  });
+  document.getElementById('later').addEventListener('click', function () {
+    var later = parseInt(new URLSearchParams(location.search).get('later') || '3000', 10);
+    statusEl.textContent = 'A window will open shortly.';
+    setTimeout(function () {
+      window.open('popup-target.html?from=later', '_blank');
+      statusEl.textContent = 'A window was opened a while after a click.';
+    }, later);
+  });
+</script>
+</main>
+</body>
+</html>

@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Reader test article</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header class="site"><a href="/">GhostAgent benchmark site</a></header>
+<nav id="menu"><a href="/">MENU-LINK-SHOULD-NOT-APPEAR</a></nav>
+<main>
+<article>
+<h1>Reading a long article</h1>
+<p>The first paragraph has a <a href="long.html">link to the long page</a> and a
+<a href="javascript:void(0)">script link</a>.</p>
+<h2>Facts</h2>
+<ul>
+  <li>First point</li>
+  <li>Second point
+    <ul><li>Nested point</li></ul>
+  </li>
+</ul>
+<ol start="3"><li>Third</li><li>Fourth</li></ol>
+<table>
+  <tr><th>Name</th><th>Value</th></tr>
+  <tr><td>Alpha</td><td>1</td></tr>
+  <tr><td>Beta</td><td>2</td></tr>
+</table>
+<pre>code line 1
+  code line 2</pre>
+<p hidden>HIDDEN-TEXT-SHOULD-NOT-APPEAR</p>
+<p style="display: none">STYLE-HIDDEN-SHOULD-NOT-APPEAR</p>
+<aside>SIDEBAR-SHOULD-NOT-APPEAR</aside>
+<button type="button">BUTTON-SHOULD-NOT-APPEAR</button>
+<iframe src="reader-frame.html" title="A part in a frame" style="width: 100%; height: 80px; border: 0"></iframe>
+<div id="more"></div>
+</article>
+</main>
+<footer>FOOTER-SHOULD-NOT-APPEAR</footer>
+<script>
+  // ?paras=N adds N generated paragraphs of exactly 1000 characters each (default 0), so a test can
+  // page through a long article with reader_mode.
+  var n = parseInt(new URLSearchParams(location.search).get('paras') || '0', 10);
+  var filler = 'The quick brown fox jumps over the lazy dog while the archive keeps every page in order. ';
+  var more = document.getElementById('more');
+  for (var i = 1; i <= n; i++) {
+    var text = 'Paragraph ' + i + '. ';
+    while (text.length < 1000) text += filler;
+    var p = document.createElement('p');
+    p.textContent = text.slice(0, 999) + '.';
+    more.appendChild(p);
+  }
+</script>
+</body>
+</html>

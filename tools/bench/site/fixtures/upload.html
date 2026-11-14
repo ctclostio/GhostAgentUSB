@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Upload a file</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<main>
+<h1>Upload a file</h1>
+<form action="/submit/upload" method="post" enctype="multipart/form-data">
+  <label for="file">Choose a file</label>
+  <input id="file" name="file" type="file">
+  <p><button type="button" id="pick">Browse ...</button> <span id="chosen">No file chosen.</span></p>
+  <p><button type="submit">Upload</button></p>
+</form>
+<script>
+  // A styled button that opens the same file picker, as many sites do.
+  document.getElementById('pick').addEventListener('click', function () { document.getElementById('file').click(); });
+  document.getElementById('file').addEventListener('change', function (e) {
+    document.getElementById('chosen').textContent = e.target.files.length ? e.target.files[0].name : 'No file chosen.';
+  });
+</script>
+</main>
+</body>
+</html>

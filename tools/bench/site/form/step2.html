@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Book a trip - step 2 of 2</title>
+<link rel="stylesheet" href="/style.css">
+<script src="/bench.js"></script>
+<style>
+  #suggestions { border: 1px solid #8b96a3; border-top: none; max-width: 340px; background: #fff; }
+  #suggestions div { padding: 4px 10px; cursor: pointer; }
+  #suggestions div:hover, #suggestions div.active { background: #dbe7f8; }
+</style>
+</head>
+<body>
+<header class="site"><a href="/">Northbound Travel</a></header>
+<main>
+<h1>Book a trip</h1>
+<p class="muted">Step 2 of 2: your trip</p>
+<p id="who" class="muted"></p>
+<form id="step2" action="/submit/booking" method="post" novalidate>
+  <input type="hidden" name="name">
+  <input type="hidden" name="email">
+  <input type="hidden" name="country">
+  <label for="city">Destination city</label>
+  <input id="city" name="city" size="34" autocomplete="off" placeholder="Start typing, then pick from the list">
+  <input type="hidden" id="city_code" name="city_code">
+  <div id="suggestions" role="listbox"></div>
+  <label for="date">Travel date</label>
+  <input id="date" name="date" type="date">
+  <p><input id="terms" name="terms" type="checkbox" value="yes">
+     <label class="inline" for="terms">I agree to the booking terms</label></p>
+  <p id="problem" class="error"></p>
+  <p><a href="step1.html">Back</a> &nbsp; <button type="submit">Book the trip</button></p>
+</form>
+</main>
+<script>
+  // Step 1's answers arrive in the query string and travel on as hidden fields.
+  var params = new URLSearchParams(location.search);
+  ['name', 'email', 'country'].forEach(function (k) {
+    document.querySelector('input[name=' + k + ']').value = params.get(k) || '';
+  });
+  if (params.get('name')) {
+    document.getElementById('who').textContent = 'Booking for ' + params.get('name') + ' (' + (params.get('email') || '') + ')';
+  }
+
+  // A home-made autocomplete: the city only counts once it is picked from the list.
+  var CITIES = [['Valencia', 'VLC'], ['Vancouver', 'YVR'], ['Vantaa', 'HEL'], ['Varna', 'VAR'], ['Venice', 'VCE'],
+                ['Victoria', 'YYJ'], ['Vienna', 'VIE'], ['Montreal', 'YUL'], ['Toronto', 'YYZ'], ['Calgary', 'YYC'],
+                ['Vilnius', 'VNO'], ['Halifax', 'YHZ']];
+  var city = document.getElementById('city'), code = document.getElementById('city_code');
+  var box = document.getElementById('suggestions'), active = -1;
+  function pick(entry) {
+    city.value = entry[0]; code.value = entry[1]; box.innerHTML = ''; active = -1;
+  }
+  function render() {
+    code.value = '';
+    box.innerHTML = '';
+    active = -1;
+    var typed = city.value.trim().toLowerCase();
+    if (!typed) return;
+    CITIES.filter(function (c) { return c[0].toLowerCase().indexOf(typed) === 0; }).slice(0, 6).forEach(function (c) {
+      var row = document.createElement('div');
+      row.setAttribute('role', 'option');
+      row.textContent = c[0] + ' (' + c[1] + ')';
+      row.addEventListener('mousedown', function (e) { e.preventDefault(); pick(c); });
+      box.appendChild(row);
+    });
+  }
+  city.addEventListener('input', render);
+  city.addEventListener('keydown', function (e) {
+    var rows = box.children;
+    if (!rows.length) return;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      active = (active + (e.key === 'ArrowDown' ? 1 : rows.length - 1)) % rows.length;
+      for (var i = 0; i < rows.length; i++) rows[i].classList.toggle('active', i === active);
+    } else if (e.key === 'Enter' && active >= 0) {
+      e.preventDefault();
+      var label = rows[active].textContent;
+      pick(CITIES.filter(function (c) { return label.indexOf(c[0] + ' (') === 0; })[0]);
+    }
+  });
+
+  document.getElementById('step2').addEventListener('submit', function (e) {
+    var problem = '';
+    if (!code.value) problem = 'Please choose the destination city from the suggestion list.';
+    else if (!document.getElementById('date').value) problem = 'Please enter the travel date.';
+    else if (!document.getElementById('terms').checked) problem = 'Please accept the booking terms.';
+    else if (!params.get('name')) problem = 'Your details from step 1 are missing. Go back to step 1.';
+    document.getElementById('problem').textContent = problem;
+    if (problem) e.preventDefault();
+  });
+</script>
+</body>
+</html>

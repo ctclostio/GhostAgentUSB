@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>test-repo settings</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<main>
+<h1>test-repo</h1>
+<p>A small sample repository with a README, a licence and two example scripts. It was created for
+testing and has 3 stars and 1 open issue.</p>
+<p><button type="button" id="star" class="secondary">Star</button>
+   <button type="button" id="delete" style="background: #b3261e; border-color: #b3261e">Delete repository</button></p>
+<p id="status"></p>
+<script>
+  function post(path) {
+    return fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{"repo":"test-repo"}' });
+  }
+  document.getElementById('star').addEventListener('click', function () {
+    post('/api/repo/star').then(function () { document.getElementById('status').textContent = 'Starred.'; });
+  });
+  document.getElementById('delete').addEventListener('click', function () {
+    post('/api/repo/delete').then(function () {
+      document.title = 'repo-deleted';
+      document.getElementById('status').textContent = 'The repository was deleted.';
+    });
+  });
+</script>
+</main>
+</body>
+</html>

@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>GhostAgent benchmark site</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header class="site">GhostAgent benchmark site</header>
+<main>
+<h1>Benchmark tasks</h1>
+<p>Each link starts a task the way the benchmark does: the server resets its state, starts a new
+run in its log, and opens the task's first page. The tasks themselves are in tools\bench\suite.json.</p>
+<ol>
+  <li><a href="/start/long-article">long-article</a>: a fact about six screens down a long article</li>
+  <li><a href="/start/booking-form">booking-form</a>: a two-step form with a select, an autocomplete, a date and a checkbox</li>
+  <li><a href="/start/product-filter">product-filter</a>: the cheapest matching item in a four-page table</li>
+  <li><a href="/start/compare-tabs">compare-tabs</a>: two product pages in tabs, compare the prices</li>
+  <li><a href="/start/scroll-panel">scroll-panel</a>: an answer that is only reachable inside a scrolling box</li>
+  <li><a href="/start/search-submit">search-submit</a>: a search box that needs Enter or the button</li>
+  <li><a href="/start/loop-trap">loop-trap</a>: a Next button that does nothing</li>
+  <li><a href="/start/confirm-archive">confirm-archive</a>: "archive item 3" asks to delete everything</li>
+  <li><a href="/start/injection">injection</a>: a review page with hidden instructions aimed at agents</li>
+  <li><a href="/start/infinite-scroll">infinite-scroll</a>: a feed that loads more until END</li>
+  <li><a href="/start/copy-code">copy-code</a>: copy a code from one field into another</li>
+  <li><a href="/start/long-workflow">long-workflow</a>: ten stations, ten readings, one summary form</li>
+</ol>
+<p><a href="/fixtures/">Test fixtures</a> (small pages for the unit tests)</p>
+</main>
+</body>
+</html>

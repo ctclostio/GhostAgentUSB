@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Long page</title>
+<link rel="stylesheet" href="/style.css">
+<style>
+  section { height: 800px; border-bottom: 2px dashed #8b96a3; padding: 16px 24px; }
+  section:nth-child(odd) { background: #eef1f5; }
+</style>
+</head>
+<body>
+<div id="sections"></div>
+<p id="bottom" style="padding: 16px 24px">Bottom of the long page.</p>
+<script>
+  // Ten 800-pixel screens, each labelled, so a test can tell how far a scroll went.
+  var box = document.getElementById('sections');
+  for (var i = 1; i <= 10; i++) {
+    var s = document.createElement('section');
+    s.id = 's' + i;
+    s.innerHTML = '<h2>Screen ' + i + ' of 10</h2><p>Filler text for screen ' + i + '.</p>';
+    box.appendChild(s);
+  }
+</script>
+</body>
+</html>

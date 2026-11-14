@@ -4,12 +4,25 @@
 /GhostAgent/browsers/
 /GhostAgent/models/*.gguf
 /GhostAgent/models/*.part
+# Written next to the models: which files passed their SHA-256 check (the build and the agent), and
+# sizes the agent read from a model's header (rebuilt when the model changes).
+/GhostAgent/models/.verified
+/GhostAgent/models/*.layout.json
 
 # Written while the agent runs: browser sign-ins, downloads, logs and screenshots. Never commit these.
 /GhostAgent/browser-profile/
 /GhostAgent/browser-profile-edge/
 /GhostAgent/downloads/
 /GhostAgent/logs/
+
+# The user's own settings (only what they changed; the defaults are in settings.default.json),
+# and the copy of an old full settings.json kept when it was converted.
+/GhostAgent/settings.json
+/GhostAgent/settings.json.tmp
+/GhostAgent/settings.backup*.json
+
+# Benchmark output when tools\bench runs outside a GhostAgent folder.
+/tools/bench/results/
 
 __pycache__/
 *.pyc

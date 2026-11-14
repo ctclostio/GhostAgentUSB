@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Slider and drag</title>
+<link rel="stylesheet" href="/style.css">
+<style>
+  #drag { width: 120px; padding: 10px; background: #23395d; color: #fff; cursor: grab; text-align: center; }
+  #drop { width: 320px; height: 120px; border: 3px dashed #8b96a3; margin-top: 16px; display: flex; align-items: center; justify-content: center; }
+</style>
+</head>
+<body>
+<main>
+<h1>Slider and drag</h1>
+<label for="volume">Volume</label>
+<input id="volume" type="range" min="0" max="100" value="20" style="width: 400px">
+<span id="volume-value">20</span>
+<h2>Drag the card into the box</h2>
+<div id="drag" draggable="true">Card</div>
+<div id="drop">Drop here</div>
+<p id="status">The card has not been moved.</p>
+<script>
+  var volume = document.getElementById('volume');
+  volume.addEventListener('input', function () { document.getElementById('volume-value').textContent = volume.value; });
+  var drop = document.getElementById('drop');
+  drop.addEventListener('dragover', function (e) { e.preventDefault(); });
+  drop.addEventListener('drop', function (e) {
+    e.preventDefault();
+    drop.appendChild(document.getElementById('drag'));
+    document.getElementById('status').textContent = 'The card is in the box.';
+  });
+</script>
+</main>
+</body>
+</html>

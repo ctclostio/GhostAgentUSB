@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Confirm page</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<main>
+<h1>Confirm</h1>
+<p><button type="button" id="b">Delete</button></p>
+<p id="status">Nothing has happened yet.</p>
+<script>
+  // The title tells a test what the dialog's answer was: DELETED (accepted) or kept (dismissed).
+  document.getElementById('b').addEventListener('click', function () {
+    var yes = confirm('Permanently delete all 523 items?');
+    document.title = yes ? 'DELETED' : 'kept';
+    document.getElementById('status').textContent = yes ? 'All items were deleted.' : 'Nothing was deleted.';
+  });
+</script>
+</main>
+</body>
+</html>

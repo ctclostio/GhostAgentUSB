@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Products - Homestead Supply</title>
+<link rel="stylesheet" href="/style.css">
+<script src="/bench.js"></script>
+</head>
+<body>
+<header class="site"><a href="/">Homestead Supply</a></header>
+<main>
+<h1>All products</h1>
+<form id="filters" method="get" action="products.html">
+  <span>Category
+    <select name="category">
+      <option value="">All</option><option>Kitchen</option><option>Garden</option><option>Office</option><option>Toys</option>
+    </select></span>
+  &nbsp; <span>Color
+    <select name="color">
+      <option value="">All</option><option>Blue</option><option>Red</option><option>Green</option><option>Black</option><option>White</option>
+    </select></span>
+  &nbsp; <input type="checkbox" id="instock" name="instock" value="1"><label class="inline" for="instock">In stock only</label>
+  &nbsp; <button type="submit">Apply filters</button>
+</form>
+<table>
+  <thead><tr><th>Product</th><th>Category</th><th>Color</th><th>Availability</th><th>Price</th></tr></thead>
+  <tbody id="rows"></tbody>
+</table>
+<p class="pager" id="pager"></p>
+<p class="muted" id="count"></p>
+</main>
+<script>
+  var PRODUCTS = [
+    ['Indigo Notebook', 'Office', 'Blue', 1, 4.30], ['Ember Spatula Set', 'Kitchen', 'Red', 1, 8.20],
+    ['Cedar Planter Box', 'Garden', 'Green', 1, 34.00], ['Cobalt Measuring Cups', 'Kitchen', 'Blue', 0, 9.75],
+    ['Rocket Building Kit', 'Toys', 'Red', 1, 29.99], ['Slate Desk Lamp', 'Office', 'Black', 1, 38.50],
+    ["Lagoon Chef's Knife", 'Kitchen', 'Blue', 1, 41.00], ['Fern Dish Towel', 'Kitchen', 'Green', 1, 6.50],
+    ['Azure Garden Gloves', 'Garden', 'Blue', 1, 7.90], ['Pebble Puzzle (500 pieces)', 'Toys', 'White', 1, 14.25],
+    ['Onyx Stapler', 'Office', 'Black', 0, 11.40], ['Meadow Seed Mix', 'Garden', 'Green', 1, 5.60],
+    ['Bluebell Teapot', 'Kitchen', 'Blue', 1, 27.80], ['Crimson Oven Mitts', 'Kitchen', 'Red', 1, 13.10],
+    ['Harbor Pen Set', 'Office', 'Blue', 1, 9.10], ['Sprout Watering Can', 'Garden', 'Green', 0, 18.75],
+    ['Tidewater Mixing Bowl', 'Kitchen', 'Blue', 0, 12.90], ['Comet Kite', 'Toys', 'Blue', 1, 16.40],
+    ['Snowdrop Salad Spinner', 'Kitchen', 'White', 1, 21.95], ['Basalt Mortar and Pestle', 'Kitchen', 'Black', 1, 19.30],
+    ['Juniper Hedge Shears', 'Garden', 'Green', 1, 26.60], ['Marble Run Deluxe', 'Toys', 'White', 0, 44.00],
+    ['Ledger Filing Box', 'Office', 'White', 1, 15.20], ['Ruby Toaster', 'Kitchen', 'Red', 1, 49.90],
+    ['Glacier Water Bottle', 'Kitchen', 'Blue', 0, 18.00], ['Thistle Trowel', 'Garden', 'Green', 1, 9.95],
+    ['Harbor Enamel Kettle', 'Kitchen', 'Blue', 1, 23.40], ['Atlas Desk Organizer', 'Office', 'Black', 1, 22.10],
+    ['Pond Rubber Duck Trio', 'Toys', 'Blue', 1, 6.80], ['Charcoal Grill Brush', 'Garden', 'Black', 1, 12.35],
+    ['Sapphire Serving Tray', 'Kitchen', 'Blue', 1, 31.50], ['Maple Rolling Pin', 'Kitchen', 'White', 1, 11.25],
+    ['Poppy Plant Labels', 'Garden', 'Red', 1, 3.90], ['Graphite Pencil Box', 'Office', 'Black', 1, 7.45],
+    ['Robin Toy Train', 'Toys', 'Red', 0, 37.00], ['Ocean Spice Rack', 'Kitchen', 'Blue', 1, 28.60],
+    ['Marina Cutting Board', 'Kitchen', 'Blue', 1, 24.10], ['Willow Garden Kneeler', 'Garden', 'Green', 1, 19.99],
+    ['Quartz Wall Clock', 'Office', 'White', 1, 33.30], ['Starlight Projector', 'Toys', 'Blue', 1, 25.75],
+    ['Denim Apron', 'Kitchen', 'Blue', 0, 15.60], ['Scarlet Colander', 'Kitchen', 'Red', 1, 17.40],
+    ['Moss Bird Feeder', 'Garden', 'Green', 1, 23.10], ['Ink Desk Mat', 'Office', 'Blue', 1, 18.90],
+    ['Navy Storage Jars (set of 3)', 'Kitchen', 'Blue', 1, 26.20], ['Coral Building Blocks', 'Toys', 'Red', 1, 21.00],
+    ['Jet Paper Tray', 'Office', 'Black', 1, 10.80], ['Frost Ice Cube Trays', 'Kitchen', 'White', 1, 8.95]
+  ];
+  var PER_PAGE = 12;
+  var params = new URLSearchParams(location.search);
+  var form = document.getElementById('filters');
+  form.category.value = params.get('category') || '';
+  form.color.value = params.get('color') || '';
+  form.instock.checked = params.get('instock') === '1';
+
+  var shown = PRODUCTS.filter(function (p) {
+    return (!form.category.value || p[1] === form.category.value) && (!form.color.value || p[2] === form.color.value) &&
+           (!form.instock.checked || p[3] === 1);
+  });
+  var pages = Math.max(1, Math.ceil(shown.length / PER_PAGE));
+  var page = Math.min(pages, Math.max(1, parseInt(params.get('page') || '1', 10) || 1));
+
+  var tbody = document.getElementById('rows');
+  shown.slice((page - 1) * PER_PAGE, page * PER_PAGE).forEach(function (p) {
+    var tr = document.createElement('tr');
+    [p[0], p[1], p[2], p[3] ? 'In stock' : 'Out of stock', '$' + p[4].toFixed(2)].forEach(function (v) {
+      var td = document.createElement('td'); td.textContent = v; tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  });
+  if (!shown.length) tbody.innerHTML = '<tr><td colspan="5">No products match these filters.</td></tr>';
+
+  function link(n, text) {
+    var q = new URLSearchParams(params); q.set('page', n);
+    var a = document.createElement('a'); a.href = 'products.html?' + q.toString(); a.textContent = text; return a;
+  }
+  var pager = document.getElementById('pager');
+  if (page > 1) pager.appendChild(link(page - 1, '< Previous'));
+  for (var n = 1; n <= pages; n++) {
+    if (n === page) { var s = document.createElement('span'); s.textContent = 'Page ' + n; s.style.fontWeight = '600'; pager.appendChild(s); }
+    else pager.appendChild(link(n, String(n)));
+  }
+  if (page < pages) pager.appendChild(link(page + 1, 'Next >'));
+  document.getElementById('count').textContent = shown.length + ' products, page ' + page + ' of ' + pages + '.';
+</script>
+</body>
+</html>

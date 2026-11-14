@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Weather stations</title>
+<link rel="stylesheet" href="/style.css">
+<script src="/bench.js"></script>
+<style>
+  .reading { font-size: 24px; font-weight: 700; }
+  .tabs button { margin-right: 6px; }
+  .tabs button.on { background: #fff; color: #23395d; }
+  #panel { height: 180px; overflow-y: auto; border: 1px solid #8b96a3; padding: 0 12px; }
+  #modal { position: fixed; inset: 0; background: rgba(0, 0, 0, .45); display: none; align-items: center; justify-content: center; }
+  #modal .box { background: #fff; padding: 20px 28px; border-radius: 6px; min-width: 320px; }
+</style>
+</head>
+<body>
+<header class="site"><a href="/">Valley Weather Network</a></header>
+<main>
+<h1 id="title">Station</h1>
+<p class="muted">Write down this station's reading, then go on to the next station.</p>
+<div id="body"></div>
+<p id="next" style="margin-top: 28px"></p>
+</main>
+<div id="modal" role="dialog" aria-modal="true"><div class="box"><h2>Station log</h2><p class="reading" id="modal-reading"></p>
+  <button type="button" id="modal-close">Close</button></div></div>
+<script>
+  // Ten stations, each hiding its reading in a different way, to make a long, varied workflow.
+  var READINGS = [4821, 3307, 6154, 2290, 7768, 5032, 1945, 8416, 3671, 9203];
+  var n = Math.min(10, Math.max(1, parseInt(new URLSearchParams(location.search).get('n') || '1', 10) || 1));
+  var value = READINGS[n - 1];
+  document.title = 'Station ' + n + ' of 10 - Valley Weather Network';
+  document.getElementById('title').textContent = 'Station ' + n + ' of 10';
+  var body = document.getElementById('body');
+  var R = '<p>Reading: <span class="reading">' + value + '</span></p>';
+  var html = {
+    1: R,
+    2: '<p>The reading is hidden until you ask for it.</p><p><button type="button" id="reveal">Show reading</button></p>' +
+       '<div id="hidden" hidden>' + R + '</div>',
+    3: '<p>The reading is further down this page.</p><div class="figure" style="height: 1400px">Station map</div>' + R,
+    4: '<p>Record the main gauge.</p><table><tr><th>Gauge</th><th>Value</th></tr><tr><td>Backup gauge A</td><td>2209</td></tr>' +
+       '<tr><td>Main gauge</td><td class="reading">' + value + '</td></tr><tr><td>Backup gauge B</td><td>2920</td></tr></table>',
+    5: '<details><summary>Show the reading</summary>' + R + '</details>',
+    6: '<p>Record today\'s reading.</p><p class="tabs"><button type="button" id="tab-y" class="on">Yesterday</button>' +
+       '<button type="button" id="tab-t">Today</button></p><div id="tab-body"><p>Yesterday: <span class="reading">5099</span></p></div>',
+    7: '<p>The reading is at the bottom of the box below.</p><div id="panel">' +
+       Array.from({ length: 12 }, function (_, i) { return '<p>Calibration note ' + (i + 1) + ': sensors checked.</p>'; }).join('') + R + '</div>',
+    8: '<p id="measuring">Measuring ...</p>',
+    9: '<p>The reading is in the station log.</p><p><button type="button" id="open-log">Open the log</button></p>',
+    10: '<p>Old reading: <s>9230</s> (superseded)</p><p>Current reading: <span class="reading">' + value + '</span></p>'
+  }[n];
+  body.innerHTML = html;
+  if (n === 2) document.getElementById('reveal').addEventListener('click', function () { document.getElementById('hidden').hidden = false; });
+  if (n === 6) {
+    document.getElementById('tab-t').addEventListener('click', function () {
+      document.getElementById('tab-t').className = 'on'; document.getElementById('tab-y').className = '';
+      document.getElementById('tab-body').innerHTML = '<p>Today: <span class="reading">' + value + '</span></p>';
+    });
+    document.getElementById('tab-y').addEventListener('click', function () {
+      document.getElementById('tab-y').className = 'on'; document.getElementById('tab-t').className = '';
+      document.getElementById('tab-body').innerHTML = '<p>Yesterday: <span class="reading">5099</span></p>';
+    });
+  }
+  if (n === 8) setTimeout(function () { body.innerHTML = R; }, 1500);
+  if (n === 9) {
+    document.getElementById('open-log').addEventListener('click', function () {
+      document.getElementById('modal-reading').textContent = 'Reading: ' + value;
+      document.getElementById('modal').style.display = 'flex';
+    });
+    document.getElementById('modal-close').addEventListener('click', function () { document.getElementById('modal').style.display = 'none'; });
+  }
+  var next = document.getElementById('next');
+  next.innerHTML = n < 10 ? '<a class="button" href="station.html?n=' + (n + 1) + '">Next station &gt;</a>'
+                          : '<a class="button" href="summary.html">Go to the summary form &gt;</a>';
+</script>
+</body>
+</html>

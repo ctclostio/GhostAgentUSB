@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Scheme links</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<main>
+<h1>Links to pages an agent must not open</h1>
+<p>Direct links:</p>
+<ul>
+  <li><a id="file" href="file:///C:/Windows/win.ini">file:///C:/Windows/win.ini</a></li>
+  <li><a id="javascript" href="javascript:void(document.title='JS-RAN')">javascript: link that renames this page</a></li>
+  <li><a id="data" href="data:text/html,%3Ctitle%3EDATA-PAGE%3C/title%3E%3Cp%3Edata page%3C/p%3E">data: page</a></li>
+  <li><a id="chrome" href="chrome://settings">chrome://settings</a></li>
+  <li><a id="viewsource" href="view-source:http://127.0.0.1/">view-source: page</a></li>
+</ul>
+<p>Server redirects (the link itself is an ordinary http address):</p>
+<ul>
+  <li><a id="redirect-file" href="/redirect?to=file%3A%2F%2F%2FC%3A%2FWindows%2Fwin.ini">redirect to file:</a></li>
+  <li><a id="redirect-data" href="/redirect?to=data%3Atext%2Fhtml%2C%3Ctitle%3EDATA-PAGE%3C%2Ftitle%3E">redirect to data:</a></li>
+  <li><a id="redirect-chrome" href="/redirect?to=chrome%3A%2F%2Fversion">redirect to chrome:</a></li>
+  <li><a id="redirect-http" href="/redirect?to=%2Ffixtures%2Flong.html">redirect to an ordinary page</a></li>
+</ul>
+<p>Script navigation:</p>
+<p><button type="button" id="js-data">Go to a data: page by script</button>
+   <button type="button" id="js-file">Go to a file: page by script</button></p>
+<script>
+  document.getElementById('js-data').addEventListener('click', function () {
+    location.href = 'data:text/html,<title>DATA-PAGE</title><p>data page</p>';
+  });
+  document.getElementById('js-file').addEventListener('click', function () {
+    location.href = 'file:///C:/Windows/win.ini';
+  });
+</script>
+</main>
+</body>
+</html>

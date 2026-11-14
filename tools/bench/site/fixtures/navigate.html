@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Slow navigation</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<main>
+<h1>Slow navigation</h1>
+<p>The link below goes to a page the server holds back for 3 seconds, so an action taken right
+after clicking it happens in the middle of a navigation.</p>
+<p><a id="slow" href="/slow?ms=3000">Open the slow page</a></p>
+<p><button type="button" id="b">A button</button> <span id="status"></span></p>
+<script>
+  document.getElementById('b').addEventListener('click', function () {
+    document.getElementById('status').textContent = 'Clicked.';
+  });
+</script>
+</main>
+</body>
+</html>

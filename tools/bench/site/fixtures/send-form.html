@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>New message</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<main>
+<h1>New message</h1>
+<p>Pressing Enter in either box sends the message at once, as the Send button does.</p>
+<form id="compose" action="/submit/message" method="post">
+  <label for="to">To</label>
+  <input id="to" name="to" size="30">
+  <label for="subject">Subject</label>
+  <input id="subject" name="subject" size="40">
+  <p><button type="submit" id="send">Send</button></p>
+</form>
+<form id="lookup" action="/submit/lookup" method="post">
+  <label for="city">City</label>
+  <input id="city" name="city" size="20">
+  <p><button type="submit">Look up</button></p>
+</form>
+</main>
+</body>
+</html>

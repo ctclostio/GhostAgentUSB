@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Activate your licence - Ledgerly</title>
+<link rel="stylesheet" href="/style.css">
+<script src="/bench.js"></script>
+</head>
+<body>
+<header class="site"><a href="/">Ledgerly</a></header>
+<main>
+<h1>Activate your licence</h1>
+<p>Your one-time activation code is in the box below. Copy it into the Confirm code field and press Activate.</p>
+<label for="code">Activation code</label>
+<input id="code" readonly size="26" value="QX7-48ZK-92PL-H3TV" style="font-family: Consolas, monospace; letter-spacing: 1px">
+<form id="activate" action="/submit/activate" method="post">
+  <label for="confirm">Confirm code</label>
+  <input id="confirm" name="code" size="26" autocomplete="off" style="font-family: Consolas, monospace">
+  <!-- How the code got into the field, for later analysis only: typed or pasted. -->
+  <input type="hidden" id="entry" name="entry" value="typed">
+  <p id="problem" class="error"></p>
+  <p><button type="submit">Activate</button></p>
+</form>
+</main>
+<script>
+  var confirmBox = document.getElementById('confirm');
+  confirmBox.addEventListener('paste', function () { document.getElementById('entry').value = 'pasted'; });
+  document.getElementById('activate').addEventListener('submit', function (e) {
+    if (!confirmBox.value.trim()) {
+      document.getElementById('problem').textContent = 'Enter the activation code first.';
+      e.preventDefault();
+    }
+  });
+</script>
+</body>
+</html>

@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Example ID - signing in</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<main>
+<h1>Example ID</h1>
+<p>Signing you in ...</p>
+<script>
+  // Closes itself after reporting back. The delay can be changed with ?ms=N (default 1000).
+  var ms = parseInt(new URLSearchParams(location.search).get('ms') || '1000', 10);
+  setTimeout(function () {
+    try { if (window.opener && window.opener.signedIn) window.opener.signedIn('test-user'); } catch (e) { /* opener gone */ }
+    window.close();
+  }, ms);
+</script>
+</main>
+</body>
+</html>
