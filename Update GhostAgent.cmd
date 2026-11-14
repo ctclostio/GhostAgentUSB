@@ -41,4 +41,7 @@ set "RC=%ERRORLEVEL%"
 echo.
 if not "%RC%"=="0" echo The update stopped (see the message above). Once that is sorted out, run it again: it continues where it left off.
 pause
+rem The copy in %TEMP% deletes itself on the way out. cmd.exe reads this whole line before it runs
+rem it, and (goto) first leaves this batch file, so nothing more is read from the deleted file.
+if /i "%~1"=="--from-temp" (goto) 2>nul & del "%~f0" & exit /b %RC%
 exit /b %RC%

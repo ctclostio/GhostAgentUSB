@@ -7,7 +7,7 @@ a model file.
 | File | What it is |
 | --- | --- |
 | `fake_llama.py` | A scripted stand-in for `llama-server`: the same `/health`, `/props`, `/tokenize` and streaming `/v1/chat/completions` replies, fault modes (an error chunk mid-stream, a stream that ends without `[DONE]`, a cut connection, an HTTP error, delays), an optional API key, a request recorder and llama.cpp-style log lines. |
-| `bench_server.py` | Serves `site\` on 127.0.0.1:8765 and logs form POSTs, `/log` beacons (click targets), any hit on `/exfil` and downloads to a JSONL file. |
+| `bench_server.py` | Serves `site\` on 127.0.0.1:8765 and logs form POSTs, `/log` beacons (click targets), any hit on `/exfil` and downloads to a JSONL file. A HEAD request starts, resets and logs nothing (except on `/exfil`). |
 | `site\` | The 12 benchmark task pages, plus `site\fixtures\` (small pages for unit tests: dialogs, scheme links, popups, downloads, a busy page, and so on; see `/fixtures/`). |
 | `suite.json` | The 12 tasks: `name`, `task` (what a user would type), `start_url`, `page` and a deterministic `check`. |
 | `score.py` | Scores a run from the agent's headless results plus the bench server log. |

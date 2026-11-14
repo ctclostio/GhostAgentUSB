@@ -263,13 +263,15 @@ class FakeLlama:
         self.log_path = log
         self.alias = alias
         self.ctx_size = ctx_size
-        self.loading_until = time.time() + float(loading_s)
+        # The monotonic clock: a wall clock set back would make a fresh fake answer "Loading model".
+        self.loading_until = time.monotonic() + float(loading_s)
         self.validate = validate
         self.prompt_tps = prompt_tps
         self.gen_tps = gen_tps
         self.chunk_chars = max(1, int(chunk_chars))
         self.requests = []
         self.chats_done = 0  # chat requests fully answered (or failed); --exit-after counts these
+        self.chats_changed = threading.Condition()  # notified when chats_done goes up (see wait_for_chats)
         self.next_reply = 0
         self.task_id = 0
         self.slot_tokens = []
@@ -292,6 +294,14 @@ class FakeLlama:
 
     def reset_cache(self):
         self.slot_tokens = []
+
+    def wait_for_chats(self, n, timeout=30.0):
+        """Wait until n chat requests are done; returns chats_done then. A chat is counted just after
+        its last byte has gone out, so a client that has its whole reply can still be a moment early:
+        this waits for the count itself, not for a time that is usually long enough."""
+        with self.chats_changed:
+            self.chats_changed.wait_for(lambda: self.chats_done >= n, timeout)
+            return self.chats_done
 
     def chat_requests(self):
         return [r for r in self.requests if r["path"] in ("/v1/chat/completions", "/chat/completions")]
@@ -386,7 +396,7 @@ class Handler(BaseHTTPRequestHandler):
         self.fake.record(self.entry)
         if not self.authorized():
             return self.send_json(401, error_body(401, "Invalid API Key"))
-        loading = time.time() < self.fake.loading_until
+        loading = time.monotonic() < self.fake.loading_until
         if path in ("/health", "/v1/health"):
             if loading:
                 return self.send_json(503, error_body(503, "Loading model"))
@@ -413,7 +423,9 @@ class Handler(BaseHTTPRequestHandler):
                 try:
                     return self.chat(body)
                 finally:
-                    self.fake.chats_done += 1
+                    with self.fake.chats_changed:
+                        self.fake.chats_done += 1
+                        self.fake.chats_changed.notify_all()
         return self.send_json(404, error_body(404, "File Not Found"))
 
     def do_GET(self):

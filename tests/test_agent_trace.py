@@ -327,14 +327,14 @@ class ServerPlumbingTests(unittest.TestCase):
         # Too little for the explicit layout: llama.cpp fits it, leaving the real difference free too.
         args, explicit = AGENT.gpu_layout_args(self.DEVICE, s, emulate_free_mib=5000)
         self.assertFalse(explicit)
-        self.assertEqual(args, ["--device", "CUDA0", "--fit-target", str(22000 - 5000 + 1024)])
+        self.assertEqual(args, ["--device", "CUDA0", "--fit-target", str(22000 - 5000 + 1024 + AGENT.VISION_RESERVE_MIB)])
         args, explicit = AGENT.gpu_layout_args(self.DEVICE, s, auto_fit=True, emulate_free_mib=7070)
-        self.assertEqual(args[-2:], ["--fit-target", str(22000 - 7070 + 1024)])
+        self.assertEqual(args[-2:], ["--fit-target", str(22000 - 7070 + 1024 + AGENT.VISION_RESERVE_MIB)])
         args, explicit = AGENT.gpu_layout_args(self.DEVICE, s, auto_fit=True)
-        self.assertEqual(args[-2:], ["--fit-target", "1024"])
+        self.assertEqual(args[-2:], ["--fit-target", str(1024 + AGENT.VISION_RESERVE_MIB)])
         # More than the card has: the real figure counts.
         args, _ = AGENT.gpu_layout_args(self.DEVICE, s, auto_fit=True, emulate_free_mib=30000)
-        self.assertEqual(args[-2:], ["--fit-target", "1024"])
+        self.assertEqual(args[-2:], ["--fit-target", str(1024 + AGENT.VISION_RESERVE_MIB)])
         # A small cache is left out; a set cache size is used as it is.
         args, _ = AGENT.gpu_layout_args({**self.DEVICE, "free": 5700}, s)
         self.assertNotIn("--moe-cache-mib", args)
@@ -423,7 +423,7 @@ class ServerPlumbingTests(unittest.TestCase):
         self.assertTrue(server.explicit_layout)
         self.assertEqual(affinity, [0xF0FF])
         args, server, affinity = self.start_server(settings(), emulate=5000)
-        self.assertEqual(args[args.index("--fit-target") + 1], str(22000 - 5000 + 1024))
+        self.assertEqual(args[args.index("--fit-target") + 1], str(22000 - 5000 + 1024 + AGENT.VISION_RESERVE_MIB))
         self.assertFalse(server.explicit_layout)
         self.assertEqual(affinity, [])
 

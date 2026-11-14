@@ -20,7 +20,7 @@ This is version 0.2.0. The speed figures on this page were measured **before** t
 - Windows 10 or 11, 64-bit. On ARM PCs the build fetches ARM64 parts, but those are untested.
 - RAM: the model needs about **22 GB free** (fast), 19 GB (accurate) or 40 GB (fast-q8). A PC with 32 GB can run fast or accurate when little else is open; 64 GB is recommended, and fast-q8 needs it. The agent warns before loading, and asks first on a PC with clearly too little.
 - GPU: an NVIDIA card with 8 GB or more works best. The CUDA 13 build needs driver 580 or newer and a GTX 16 / RTX 20-series card or newer (compute capability 7.5); other NVIDIA cards and drivers use the CUDA 12 build (driver 550 or newer). AMD and Intel Arc cards use Vulkan. Integrated graphics are not used. CPU-only works, but each step takes several times longer.
-- The Microsoft Visual C++ Redistributable, which llama.cpp needs. Most PCs have it; the build says so if one does not.
+- The Microsoft Visual C++ Redistributable (x64; ARM64 for a stick built with ARM64 parts), which llama.cpp needs and which cannot be carried on the stick. Most PCs have it; the build and the agent say so if one does not.
 - A USB stick formatted **NTFS or exFAT**, in a **USB 3** port. FAT32 cannot hold files over 4 GB, so the build refuses it. A USB 3 portable SSD or an SSD-class stick makes starts much faster (see [Speed](#speed)).
 - Room on the stick: the program parts take about 3 GB, plus the model files.
 
@@ -165,7 +165,7 @@ The ones most people need:
 | `start_url` | Bing | The page the browser opens at start. |
 | `max_steps` | `0` | Steps before the agent gives up on a task; 0 = no limit (Ctrl+C stops it). |
 | `progress_checkin_steps` | `0` | Every N steps, remind the model to check its strategy; 0 = never. |
-| `backend` | `auto` | Force `cuda13`, `cuda12`, `vulkan` or `cpu`. |
+| `backend` | `auto` | Force `cuda13`, `cuda12`, `vulkan` or `cpu`. A forced GPU build that is not on the drive (an ARM64 drive has no `cuda12`) falls back to `auto`. |
 | `viewport_width`, `viewport_height` | 1280, 800 | The agent's page area. |
 | `save_screenshots` | `false` | Keep the screenshots the model sees, on the PC, for 7 days. They show private pages. |
 | `step_trace` | `true` | One line per step in `logs\steps-*.jsonl` (see [Data at rest](#data-at-rest)). |
@@ -240,7 +240,7 @@ On a non-English Chrome the switch's label is translated; it is the switch on th
 `/forget-pc` lists these and deletes them after you confirm; anything still in use goes when GhostAgent closes.
 
 - The model copy in `%LOCALAPPDATA%\GhostAgent\models`, from `copy_model_to_pc` or left by the build on the PC that built the stick.
-- Saved screenshots, and the bundled browser's cache in `%TEMP%\ghost-agent-browser-cache` (normally removed when the browser closes).
+- Saved screenshots, and the bundled browser's cache in `%TEMP%\ghost-agent-browser-cache-<id>`, one folder per browser profile (normally removed when the browser closes; one left by a crash goes at the next start, unless another GhostAgent window is using it).
 - Browser profiles kept on the PC (`chrome-agent`, or `"profile_on_stick": false`).
 - Logs and the browser profile kept on the PC when the stick could not be written to.
 - `pc.json`, this PC's answers to GhostAgent's questions.
@@ -262,7 +262,7 @@ On a non-English Chrome the switch's label is translated; it is the switch on th
 `README.txt` has the full list. The most common ones:
 
 - **The build stops**: read the red message. It names the problem (a FAT32 stick, too little free space, a download that failed, a part Windows would not run). Run it again once that is sorted out; it continues where it stopped.
-- **"llama-server.exe cannot start ... Visual C++"**: install the Microsoft Visual C++ Redistributable (x64), then run the build again.
+- **"llama-server.exe cannot start without the Microsoft Visual C++ ... runtime"**: install the "Microsoft Visual C++ Redistributable (x64)" from https://aka.ms/vs/17/release/vc_redist.x64.exe (administrator rights needed; the agent names the ARM64 one for a stick built with ARM64 parts), then start GhostAgent again.
 - **Chrome never asks "Allow remote debugging?"**: check the switch at `chrome://inspect/#remote-debugging` and that a normal Chrome window is open (pick your profile if Chrome shows its profile picker). Press B to use the bundled browser instead.
 - **The model loads slowly**: below about 45 MB/s the agent suggests a USB 3 port. `copy_model_to_pc` makes later starts fast.
 - **Wrong GPU, or a crash while loading**: in `auto` the next llama.cpp build is tried by itself, and the failing one is skipped next time (`logs\backend-cache.json`). Set `backend` to force one.
@@ -277,7 +277,7 @@ On a non-English Chrome the switch's label is translated; it is the switch on th
 GhostAgent\python\python.exe -I GhostAgent\agent\ghost_agent.py --tasks-file tools\bench\suite.json --results GhostAgent\logs\bench.jsonl --browser bundled
 ```
 
-`--emulate-free-vram-mib N` lays the model out as if the GPU had only N MiB free (to reproduce an 8 GB laptop on a bigger card), and `--affinity-mask HEX` keeps the model server on chosen CPUs.
+`--emulate-free-vram-mib N` lays the model out as if the GPU had only N MiB free (to reproduce an 8 GB laptop on a bigger card), and `--affinity-mask HEX` keeps the model server on chosen CPUs. When the output goes to a file or a pipe rather than a console, it is plain text: no colours, and progress is written as an occasional line instead of one line redrawn in place.
 
 The tests need no GPU, no model and no network beyond localhost, and use a headless browser:
 

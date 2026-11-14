@@ -465,7 +465,7 @@ class LayoutArgsTests(unittest.TestCase):
         self.assertEqual(args[-2:], ["--moe-cache-mib", str(6000 - 4326 - 1024)])
         args, explicit = AGENT.gpu_layout_args(dict(DEVICE, free=5000), s, reserve_mib=4326)
         self.assertFalse(explicit)  # less than the reserve plus 900 MiB: llama.cpp fits it
-        self.assertEqual(args, ["--device", "CUDA0", "--fit-target", "1024"])
+        self.assertEqual(args, ["--device", "CUDA0", "--fit-target", str(1024 + AGENT.VISION_RESERVE_MIB)])
 
     def test_dense_layout_always_fits_with_room_for_the_projector(self):
         args, explicit = AGENT.gpu_layout_args(DEVICE, settings(), dense=True, mmproj_mib=885)

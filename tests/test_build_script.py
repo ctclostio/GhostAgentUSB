@@ -134,6 +134,26 @@ $u = Initialize-Proxy
 Report proxy_url $u
 Report proxy_curl ($script:CurlProxyArgs -join ' ')
 Report proxy_update_uses_it ((Get-Command Invoke-Update).Definition -match 'Initialize-Proxy')
+
+# --- what the smoke test says about optional flags a build lacks ----------------------------------
+$lock = @('--cors-origins', '--no-slots', '--no-webui')
+$n1 = @(Get-OptionalFlagNotes 'bin\cuda13' @('--moe-cache-cpu-share') $lock)
+Report optflag_one_kind (@($n1 | ForEach-Object { $_.Kind }) -join ',')
+Report optflag_one_text $n1[0].Text
+$n2 = @(Get-OptionalFlagNotes 'bin\cpu' @('--moe-cache-cpu-share', '--image-max-tokens', '--no-slots') $lock)
+Report optflag_mixed_kinds (@($n2 | ForEach-Object { $_.Kind }) -join ',')
+Report optflag_mixed_texts (@($n2 | ForEach-Object { $_.Text }) -join ' | ')
+Report optflag_none (@(Get-OptionalFlagNotes 'bin\cpu' @() $lock).Count)
+Report optflag_old_wording ((Get-Command Invoke-SmokeTest).Definition -match 'those cases would fail')
+
+# --- the dry run names where a model really goes --------------------------------------------------
+function Test-SameVolume($A, $B) { return $true }
+Report dest_same_drive (Get-ModelDestNote 'C:\stick\GhostAgent\models')
+function Test-SameVolume($A, $B) { return $false }
+Report dest_other_drive (Get-ModelDestNote 'E:\GhostAgent\models')
+$NoStaging = $true
+Report dest_no_staging (Get-ModelDestNote 'E:\GhostAgent\models')
+$NoStaging = $false
 """
 
 
@@ -219,6 +239,25 @@ class BuildScriptTests(unittest.TestCase):
         self.assertEqual(self.result("proxy_curl"), "--proxy http://proxy.test:3128")
         self.assertTrue(self.result("proxy_update_uses_it"))
 
+    def test_missing_optional_flags_are_only_a_note(self):
+        # The agent leaves out optional flags a build lacks, so nothing "would fail".
+        self.assertEqual(self.result("optflag_one_kind"), "Note")
+        self.assertEqual(self.result("optflag_one_text"),
+                         "bin\\cuda13: llama-server does not accept --moe-cache-cpu-share; optional, GhostAgent runs without it")
+        self.assertFalse(self.result("optflag_old_wording"))
+        # A lock-down flag gets a warning of its own.
+        self.assertEqual(self.result("optflag_mixed_kinds"), "Note,Warn")
+        texts = self.result("optflag_mixed_texts")
+        self.assertIn("--moe-cache-cpu-share --image-max-tokens; optional, GhostAgent runs without them", texts)
+        self.assertIn("--no-slots; GhostAgent runs without it, but its model server is then locked down less tightly", texts)
+        self.assertEqual(self.result("optflag_none"), 0)
+
+    def test_dry_run_names_where_the_model_goes(self):
+        self.assertIn("straight to the target drive", self.result("dest_same_drive"))
+        self.assertNotIn("staged", self.result("dest_same_drive"))
+        self.assertIn("staged in %LOCALAPPDATA%\\GhostAgent\\models", self.result("dest_other_drive"))
+        self.assertIn("straight to the target drive", self.result("dest_no_staging"))
+
 
 class PinTests(unittest.TestCase):
     def test_llama_default_tag_stays_b11669_until_benchmark(self):
@@ -240,6 +279,19 @@ class PinTests(unittest.TestCase):
         self.assertEqual(len(flags), len(set(flags)))
         for f in flags:
             self.assertRegex(f, r"^--?[A-Za-z][A-Za-z0-9-]*$")
+        # The lock-down flags are optional (the agent starts without them, with a warning), and so is
+        # --no-webui, which the web_ui setting leaves out.
+        self.assertTrue(set(doc["lockdown"]) <= set(doc["optional"]))
+        self.assertIn("--no-webui", doc["lockdown"])
+
+    def test_the_build_reads_its_flag_lists_from_the_file(self):
+        # One list for the agent, the build and the file: the smoke test has no flag list of its own.
+        text = BUILD.read_text(encoding="ascii")
+        self.assertIn("$flags.required", text)
+        self.assertIn("$flags.optional", text)
+        self.assertIn("$flags.lockdown", text)
+        for flag in ("--no-webui", "--cors-origins", "--moe-cache-cpu-share", "--image-max-tokens"):
+            self.assertNotIn(f"'{flag}'", text)
 
 
 class UpdateCmdTests(unittest.TestCase):
@@ -266,6 +318,23 @@ class UpdateCmdTests(unittest.TestCase):
         for run in runs:
             self.assertIn("ARG <D:\\A&B (1).zip>", run)
             self.assertIn("ARG <fast>", run)
+        self.assertFalse((root.parent / "GhostAgent-Update.cmd").exists(), "the copy in %TEMP% was left behind")
+
+    def test_the_temp_copy_goes_and_a_failure_still_shows(self):
+        root = temp_dir(self, prefix="upd-") / "GhostAgent"
+        (root / "tools").mkdir(parents=True)
+        shutil.copy(UPDATE_CMD, root / UPDATE_CMD.name)
+        (root / "tools" / "Build-GhostAgent.ps1").write_text("Write-Output 'UPDATE RAN'\r\nexit 3\r\n", encoding="ascii")
+        temp = root.parent / "temp"
+        temp.mkdir()
+        r = subprocess.run(f'"{CMD}" /d /s /c ""{root / UPDATE_CMD.name}""', capture_output=True, text=True,
+                           timeout=120, env=ps_env(temp), creationflags=CREATE_NO_WINDOW, stdin=subprocess.DEVNULL)
+        out = r.stdout + r.stderr
+        self.assertIn("UPDATE RAN", out)
+        self.assertIn("The update stopped", out)  # the failure is still reported before the copy goes
+        self.assertNotIn("cannot find", out.lower())
+        self.assertEqual(list(temp.iterdir()), [], "the copy in %TEMP% was left behind")
+        self.assertTrue((root / UPDATE_CMD.name).exists())  # only the copy deletes itself
 
 
 if __name__ == "__main__":

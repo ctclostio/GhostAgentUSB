@@ -182,10 +182,11 @@ class DataAtRestTests(unittest.TestCase):
         cache = helpers.temp_dir(self) / "cache"
         (cache / "Cache_Data").mkdir(parents=True)
         (cache / "Cache_Data" / "data_1").write_bytes(b"page bytes")
-        b._cache_dir = cache
+        b._cache_dir, b._cache_lock = cache, AGENT.FolderLock.take(cache)  # as _launch_own leaves them
         b.close()
         self.assertFalse(cache.exists())
         self.assertIsNone(b._cache_dir)
+        self.assertIsNone(b._cache_lock)
 
     def test_profile_kept_on_the_pc_when_asked(self):
         with helpers.isolated_env() as base:

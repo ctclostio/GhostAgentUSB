@@ -456,6 +456,8 @@ def main(argv=None):
     ap.add_argument("--label", default="", help="a name for this configuration, stored in every row")
     ap.add_argument("--out", help="results JSONL (default: replay-<label or time>.jsonl in the logs folder)")
     a = ap.parse_args(argv)
+    if a.seed != -1 and not 0 <= a.seed <= 2**32 - 1:
+        ap.error("--seed must be -1 (random) or a whole number from 0 to 4294967295 (llama.cpp keeps 32 bits)")
     if a.vram and not a.server_pid:
         ap.error("--vram needs --server-pid (the GPU memory is read for that process)")
 

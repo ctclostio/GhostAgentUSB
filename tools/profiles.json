@@ -1,5 +1,6 @@
 {
   "_note": "Model profiles. Shared by tools\\Build-GhostAgent.ps1 (what to download and verify) and GhostAgent\\agent\\ghost_agent.py (how to run it). Every file is pinned to a Hugging Face revision and a SHA-256.",
+  "_fields": "For the agent: takes_reasoning_effort = the chat template reads reasoning_effort (sent only then); preserve_reasoning = what the preserve_reasoning setting \"auto\" means for this profile; ram_gb = the free RAM the model needs, for the warning before loading. Without them the agent infers them (dense models take reasoning_effort and keep their reasoning; RAM from the file size).",
   "default": "fast",
   "profiles": {
     "fast": {
@@ -8,6 +9,9 @@
       "arch": "moe",
       "ctx_size": 65536,
       "alias": "holo4-35b-a3b",
+      "takes_reasoning_effort": false,
+      "preserve_reasoning": false,
+      "ram_gb": 22,
       "license": "Apache-2.0",
       "license_file": "Holo4-35B-A3B-LICENSE.txt",
       "model": {
@@ -29,6 +33,9 @@
       "arch": "moe",
       "ctx_size": 65536,
       "alias": "holo4-35b-a3b-q8",
+      "takes_reasoning_effort": false,
+      "preserve_reasoning": false,
+      "ram_gb": 40,
       "license": "Apache-2.0",
       "license_file": "Holo4-35B-A3B-LICENSE.txt",
       "model": {
@@ -50,6 +57,9 @@
       "arch": "dense",
       "ctx_size": 32768,
       "alias": "holo4-27b",
+      "takes_reasoning_effort": true,
+      "preserve_reasoning": true,
+      "ram_gb": 19,
       "license": "CC-BY-NC-4.0",
       "license_file": "Holo4-27B-LICENSE.txt",
       "model": {

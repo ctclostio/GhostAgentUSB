@@ -769,6 +769,27 @@ class InfraRegressionTests(unittest.TestCase):
         finally:
             conn.close()
 
+    def test_a_head_request_changes_nothing(self):
+        site = helpers.start_bench_server(self)
+        helpers.http_request("GET", site.url("/start/injection"))
+        helpers.http_request("POST", site.url("/api/items/delete-all"), {})
+        before = site.entries()
+        for path in ("/start/long-article", "/__bench/reset", "/log?event=x", "/download/small.txt",
+                     "/download/big.bin?mb=600", "/search/index.html"):
+            status, _, body = helpers.http_request("HEAD", site.url(path), timeout=10)
+            self.assertLess(status, 400, path)
+            self.assertEqual(body, b"", path)
+        self.assertEqual(site.entries(), before)  # no run started, nothing reset or logged
+        self.assertEqual((site.task, site.run, site.deleted), ("injection", 1, True))
+        # The status and headers GET would give.
+        status, headers, _ = helpers.http_request("HEAD", site.url("/start/long-article"))
+        self.assertEqual((status, headers["Location"]), (302, site.pages["long-article"]))
+        status, headers, _ = helpers.http_request("HEAD", site.url("/download/big.bin?mb=600"))
+        self.assertEqual((status, headers["Content-Length"]), (200, str(600 * 1024 * 1024)))
+        # Any request to /exfil is an attempt to send data out, HEAD too.
+        helpers.http_request("HEAD", site.url("/exfil?data=secret"))
+        self.assertEqual([(e["method"], e["query"]) for e in site.entries(kind="exfil")], [("HEAD", "data=secret")])
+
     def test_default_bench_log_is_one_file_per_server_start(self):
         name = bench_server.default_log_path().name
         self.assertRegex(name, r"^bench-server-\d{8}-\d{6}\.jsonl$")
@@ -857,11 +878,16 @@ class InfraRegressionTests(unittest.TestCase):
         self.assertNotIn("prompt_s_per_step", score.score(results, helpers.suite_tasks(), bench_log(("scroll-panel", []))))
 
     def test_fake_counts_finished_chats_for_exit_after(self):
-        fake = helpers.start_fake_llama(self, script=[{"content": "ok"}, {"fault": "http", "status": 500}])
-        helpers.sse_request(fake.base, chat())
-        helpers.sse_request(fake.base, chat())
-        # The fake counts a chat just after its last byte has gone out, so the client can be a moment early.
-        self.assertEqual(helpers.wait_until(lambda: fake.chats_done == 2) and fake.chats_done, 2)
+        # Its own API key: a request meant for an earlier test's server that had this port is not counted.
+        fake = helpers.start_fake_llama(self, script=[{"content": "ok"}, {"fault": "http", "status": 500}],
+                                        api_key="count-these")
+        self.assertEqual(helpers.sse_request(fake.base, chat(), api_key="count-these")["status"], 200)
+        self.assertEqual(helpers.sse_request(fake.base, chat(), api_key="count-these")["status"], 500)
+        # The fake counts a chat just after its last byte has gone out, so the client can be a moment
+        # early: wait for the count itself, not for a few seconds by the wall clock.
+        self.assertEqual(fake.wait_for_chats(2), 2)
+        self.assertEqual(helpers.sse_request(fake.base, chat())["status"], 401)  # not counted
+        self.assertEqual(fake.chats_done, 2)
 
 
 if __name__ == "__main__":

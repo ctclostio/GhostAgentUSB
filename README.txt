@@ -29,6 +29,9 @@ WHAT IT NEEDS
     PC has too little.
   - Ideally an NVIDIA graphics card with 8 GB or more. AMD and Intel Arc cards use
     Vulkan. Without a usable graphics card it runs on the CPU, several times slower.
+  - The Microsoft Visual C++ Redistributable (x64; ARM64 for a drive built with
+    ARM64 parts), which llama.cpp needs. Most PCs have it; the agent says so if
+    this one does not (see TROUBLESHOOTING).
   - A USB 3 port (often blue, or marked SS). A USB 2 port makes every start much slower.
 
 FIRST START
@@ -292,6 +295,11 @@ TROUBLESHOOTING
   - Logs: GhostAgent\logs\agent-*.log (everything the console showed) and
     llama-server-*.log (the model server; the console prints its end on errors).
   - "already running": another GhostAgent window is open; close it first.
+  - "llama-server.exe cannot start without the Microsoft Visual C++ ... runtime":
+    install the "Microsoft Visual C++ Redistributable (x64)" from
+    https://aka.ms/vs/17/release/vc_redist.x64.exe (needs administrator rights), then
+    start GhostAgent again. On a drive built with ARM64 parts the agent names the
+    ARM64 one instead.
   - Chrome never asks "Allow remote debugging?": make sure the switch is on and that a
     normal Chrome window is open (if Chrome shows its profile picker, pick your
     profile). Or press B to use the browser on this drive.
@@ -329,7 +337,7 @@ FOLDERS
   Build GhostAgent.cmd     downloads or repairs everything below (safe to run again)
   Update GhostAgent.cmd    gets the newest version, then runs the build
   GhostAgent\agent         the agent (ghost_agent.py)
-  GhostAgent\bin           llama.cpp builds (cuda13, cuda12, vulkan, cpu)
+  GhostAgent\bin           llama.cpp builds (cuda13, cuda12, vulkan, cpu; no cuda12 on ARM64)
   GhostAgent\models        model files (pinned versions: tools\profiles.json)
   GhostAgent\python        portable Python with Playwright
   GhostAgent\browsers      portable Chromium (used when "browser" is "bundled")

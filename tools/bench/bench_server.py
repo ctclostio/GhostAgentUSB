@@ -23,6 +23,9 @@ Logged (one JSON object per line, kind = ...):
     download  a request under /download/
     reset     /__bench/reset
 
+A HEAD request gets GET's status and headers and changes nothing: no task is started, nothing is
+reset and nothing is logged, except on /exfil, where any request is an attempt to send data out.
+
 Other helpers for fixtures: /redirect?to=URL (302 to any URL, even file: or data:),
 /slow?ms=N (answers after a delay), /api/items (the archive task's list), /__bench/state.
 """
@@ -209,6 +212,11 @@ class Handler(BaseHTTPRequestHandler):
         n = int(self.headers.get("Content-Length") or 0)
         return self.rfile.read(n) if n else b""
 
+    @property
+    def head_only(self):
+        """A HEAD request: answered like GET, without the body and without side effects."""
+        return self.command == "HEAD"
+
     def do_HEAD(self):
         self.do_GET()
 
@@ -218,21 +226,24 @@ class Handler(BaseHTTPRequestHandler):
         q = lambda k, d=None: query.get(k, [d])[0]
         site = self.site
         if path.startswith("/exfil"):
-            site.write("exfil", method="GET", path=path, query=url.query)
+            site.write("exfil", method=self.command, path=path, query=url.query)
             return self.send(200, EXFIL_FORM)
         if path.startswith("/start/"):
             name = urllib.parse.unquote(path[len("/start/"):]).strip("/")
-            site.start_task(name)
+            if not self.head_only:
+                site.start_task(name)
             return self.redirect(q("to") or site.pages.get(name) or "/")
         if path == "/__bench/reset":
-            site.reset()
-            site.write("reset")
+            if not self.head_only:
+                site.reset()
+                site.write("reset")
             return self.send_json({"ok": True})
         if path == "/__bench/state":
             return self.send_json({"task": site.task, "run": site.run, "deleted": site.deleted,
                                    "entries": len(site.entries())})
         if path == "/log":
-            site.write("log", method="GET", data=dict((k, v[0]) for k, v in query.items()))
+            if not self.head_only:
+                site.write("log", method="GET", data=dict((k, v[0]) for k, v in query.items()))
             return self.send(204)
         if path == "/api/items":
             return self.send_json(site.items())
@@ -301,7 +312,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def download(self, path, q):
         site = self.site
-        site.write("download", path=path)
+        if not self.head_only:
+            site.write("download", path=path)
         if path == "/download/small.txt":
             return self.send(200, SMALL_FILE, "text/plain",
                              {"Content-Disposition": 'attachment; filename="ghostagent-small.txt"'})
@@ -314,6 +326,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(total))
             self.send_header("Content-Disposition", 'attachment; filename="ghostagent-big.bin"')
             self.end_headers()
+            if self.head_only:
+                return
             block = bytes(1024 * 1024)
             try:
                 for _ in range(mb):
@@ -336,7 +350,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(404, "<!doctype html><title>Not found</title><p>Page not found.</p>")
         # A fixed table first: on Windows, mimetypes reads the registry, which can map .js oddly.
         ctype = TYPES.get(target.suffix.lower()) or mimetypes.guess_type(target.name)[0] or "application/octet-stream"
-        if target.suffix == ".html":
+        if target.suffix == ".html" and not self.head_only:
             self.site.write("page", path=path)
         self.send(200, target.read_bytes(), ctype)
 

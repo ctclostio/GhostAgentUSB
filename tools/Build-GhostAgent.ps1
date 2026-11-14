@@ -650,6 +650,15 @@ function Get-StageDir([string]$Models, [int64]$Need, [string]$Name) {
     return $stage
 }
 
+# Where -DryRun says a model goes: staged on this PC's disk first only when that is another drive
+# than the target (see Get-StageDir, which a dry run must not call: it creates the folder).
+function Get-ModelDestNote([string]$Models) {
+    if ($NoStaging -or -not $env:LOCALAPPDATA) { return 'models (downloaded straight to the target drive)' }
+    $stage = Join-Path $env:LOCALAPPDATA 'GhostAgent\models'
+    if (Test-SameVolume $stage $Models) { return 'models (downloaded straight to the target drive, which is this PC''s own disk)' }
+    return 'models (staged in %LOCALAPPDATA%\GhostAgent\models when this PC has room)'
+}
+
 function Install-ModelFile($Pin, [string]$Models, [string[]]$Candidates) {
     $name = $Pin.Name
     $dest = Join-Path $Models $name
@@ -921,6 +930,23 @@ function Get-ExitHint([int64]$Code) {
     return ''
 }
 
+# What the smoke test says about optional flags a build lacks (tools\server-flags.json). The agent
+# leaves such a flag out with a notice, so it is only a note; a lock-down flag gets a warning, since
+# the model server is then locked down less tightly (its key still protects it).
+function Get-OptionalFlagNotes([string]$Where, [string[]]$Missing, [string[]]$Lockdown) {
+    $out = @()
+    $plain = @($Missing | Where-Object { $Lockdown -cnotcontains $_ })
+    $weaker = @($Missing | Where-Object { $Lockdown -ccontains $_ })
+    if ($plain.Count) {
+        $out += @{ Kind = 'Note'; Text = "${Where}: llama-server does not accept $($plain -join ' '); optional, GhostAgent runs without $(if ($plain.Count -eq 1) { 'it' } else { 'them' })" }
+    }
+    if ($weaker.Count) {
+        $out += @{ Kind = 'Warn'; Text = ("${Where}: llama-server does not accept $($weaker -join ' '); GhostAgent runs without " +
+                                          "$(if ($weaker.Count -eq 1) { 'it' } else { 'them' }), but its model server is then locked down less tightly") }
+    }
+    return $out
+}
+
 # Runs every installed part once, so a broken unpack, a missing DLL or a program that Windows
 # blocks on this PC (App Control, Smart App Control) shows up now instead of at the first start.
 function Invoke-SmokeTest([string[]]$Backends, [bool]$WithBrowser) {
@@ -962,8 +988,14 @@ function Invoke-SmokeTest([string[]]$Backends, [bool]$WithBrowser) {
             $fail += ("bin\${b}: llama-server does not accept flags GhostAgent always passes: $($missReq -join ' '). " +
                       'This llama.cpp version and tools\server-flags.json disagree; running the build again does not change that.')
         }
-        if ($missOpt.Count) { Warn "bin\${b}: llama-server does not accept $($missOpt -join ' '), which GhostAgent passes only in some cases; those cases would fail" }
-        if (-not $missReq.Count) { Note ("bin\{0}: {1}; all {2} GhostAgent flags accepted" -f $b, $verLine.Trim(), (@($flags.required).Count + @($flags.optional).Count - $missOpt.Count)) }
+        foreach ($line in (Get-OptionalFlagNotes "bin\$b" $missOpt @($flags.lockdown))) {
+            if ($line.Kind -eq 'Warn') { Warn $line.Text } else { Note $line.Text }
+        }
+        $total = @($flags.required).Count + @($flags.optional).Count
+        if (-not $missReq.Count) {
+            $accepted = if ($missOpt.Count) { "{0} of {1}" -f ($total - $missOpt.Count), $total } else { "all $total" }
+            Note ("bin\{0}: {1}; {2} GhostAgent flags accepted" -f $b, $verLine.Trim(), $accepted)
+        }
     }
 
     $py = Join-Path $Ghost 'python\python.exe'
@@ -1148,7 +1180,7 @@ function Invoke-Build {
             $have = [int64]0
             if (Test-Path -LiteralPath "$dest.part") { $have = [int64](Get-Item -LiteralPath "$dest.part").Length }
             $needTarget += $m.Size - $have
-            $toFetch += @{ Item = $m; Dest = "models (staged in %LOCALAPPDATA%\GhostAgent\models when this PC has room)" }
+            $toFetch += @{ Item = $m; Dest = (Get-ModelDestNote $models) }
         }
     }
 

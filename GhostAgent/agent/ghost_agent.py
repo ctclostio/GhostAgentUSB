@@ -198,8 +198,25 @@ LOCAL = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 # Console helpers
 # --------------------------------------------------------------------------------------------
 
+# True when the output is not a console (piped or redirected to a file, as unattended runs often are):
+# then no colour codes and no lines redrawn in place, only plain lines (see LiveLine).
+PLAIN_OUTPUT = False
+# How often a progress line is written when it cannot be redrawn in place (seconds).
+PLAIN_STATUS_SECONDS = 15
+
+
+def output_is_console(stream=None):
+    stream = sys.stdout if stream is None else stream
+    try:
+        return bool(stream.isatty())
+    except (AttributeError, OSError, ValueError):
+        return False
+
+
 def _enable_ansi():
-    if os.name == "nt":
+    global PLAIN_OUTPUT
+    PLAIN_OUTPUT = not output_is_console()
+    if os.name == "nt" and not PLAIN_OUTPUT:
         os.system("")
     for stream in (sys.stdout, sys.stderr):
         try:
@@ -209,7 +226,44 @@ def _enable_ansi():
 
 
 def c(text, code):
-    return f"\033[{code}m{text}\033[0m"
+    return str(text) if PLAIN_OUTPUT else f"\033[{code}m{text}\033[0m"
+
+
+class LiveLine:
+    """A progress line redrawn in place on the console ('\\r'). When the output is not a console,
+    nothing is redrawn: a plain line is written at most every `every` seconds (never with every=None),
+    so a log gets readable one-line progress messages instead of carriage returns."""
+
+    def __init__(self, prefix="  ", every=PLAIN_STATUS_SECONDS):
+        self.prefix = prefix
+        self.every = every
+        self.last = None
+        self.open = False  # a redrawn line is on the console and not ended yet
+
+    def show(self, text):
+        if PLAIN_OUTPUT:
+            now = time.monotonic()
+            if self.every is not None and (self.last is None or now - self.last >= self.every):
+                self.last = now
+                print(self.prefix + text, flush=True)
+            return
+        print(f"\r{self.prefix}{text}   ", end="", flush=True)
+        self.open = True
+
+    def close(self, text=None):
+        """End the line. With `text`, that is its final state, shown either way."""
+        if text is not None:
+            print((self.prefix if PLAIN_OUTPUT else f"\r{self.prefix}") + text + ("" if PLAIN_OUTPUT else "   "),
+                  flush=True)
+        elif self.open:
+            print(flush=True)
+        self.open = False
+
+    def clear(self, width):
+        """Wipe the redrawn line so it leaves no trace (nothing to do without a console)."""
+        if self.open:
+            print("\r" + " " * width + "\r", end="", flush=True)
+        self.open = False
 
 
 # Escape sequences a terminal acts on: OSC (window title, links) and the other string commands,
@@ -318,13 +372,51 @@ ANSI_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 _CONSOLE_LOG = None
 
 
+def short_path(path):
+    """The 8.3 short form of an existing path (C:\\Users\\LONGNA~1 for C:\\Users\\Long Name), or the
+    path itself when it has none or it cannot be read."""
+    path = str(path)
+    if os.name != "nt":
+        return path
+    try:
+        from ctypes import wintypes
+        k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        k32.GetShortPathNameW.argtypes = [wintypes.LPCWSTR, wintypes.LPWSTR, wintypes.DWORD]
+        k32.GetShortPathNameW.restype = wintypes.DWORD
+        need = k32.GetShortPathNameW(path, None, 0)
+        if need:
+            buf = ctypes.create_unicode_buffer(need)
+            got = k32.GetShortPathNameW(path, buf, need)
+            if 0 < got < need:
+                return buf.value
+    except Exception:
+        pass
+    return path
+
+
+_HOME_FORMS = {}
+
+
+def _home_pattern(home):
+    """The regular expression for every way a log can spell the home folder: its long and its 8.3
+    short form (a program that got the short form from Windows writes that), each with \\ or /.
+    Worked out once per home folder."""
+    if home not in _HOME_FORMS:
+        forms = {f.rstrip("\\/") for f in (home, short_path(home))}
+        forms |= {f.replace("\\", "/") for f in forms}
+        forms = sorted((f for f in forms if len(f) >= 4), key=len, reverse=True)
+        _HOME_FORMS[home] = "|".join(re.escape(f) for f in forms)
+    return _HOME_FORMS[home]
+
+
 def hide_home(text):
-    """text with this account's home folder (C:\\Users\\<name>) written as %USERPROFILE%, so the
-    logs kept on the stick do not name the Windows account of every PC it was used on."""
+    """text with this account's home folder (C:\\Users\\<name>, or its short form C:\\Users\\NAME~1)
+    written as %USERPROFILE%, so the logs kept on the stick do not name the Windows account of every
+    PC it was used on."""
     home = str(Path.home()).rstrip("\\/")
     if len(home) < 4 or not text:
         return text
-    pattern = "|".join(re.escape(h) for h in {home, home.replace("\\", "/")})
+    pattern = _home_pattern(home)
     return re.sub(f"(?:{pattern})(?=[\\\\/\"'\\s]|$)", "%USERPROFILE%", text, flags=re.I)
 
 
@@ -453,9 +545,190 @@ def screenshots_dir():
     return pc_data_dir() / "screenshots"
 
 
-def browser_cache_dir():
-    """The bundled browser's disk cache, kept in this PC's TEMP folder (fast, and off the stick)."""
-    return Path(os.environ.get("TEMP") or os.environ.get("TMP") or tempfile.gettempdir()) / "ghost-agent-browser-cache"
+BROWSER_CACHE_PREFIX = "ghost-agent-browser-cache"
+# Inside each cache folder: held open and locked while that agent's browser runs, so no other agent
+# deletes the folder. Windows lets go of the lock when the process ends, however it ends.
+CACHE_LOCK_FILE = "ghost-agent.lock"
+# A cache folder without a lock file (one from before the lock, or one being set up at this very
+# moment) is left alone until it is this old (seconds).
+UNLOCKED_CACHE_AGE = 600
+
+
+def temp_folder():
+    return Path(os.environ.get("TEMP") or os.environ.get("TMP") or tempfile.gettempdir())
+
+
+def browser_cache_dir(profile=None):
+    """The agent's own browser's disk cache, kept in this PC's TEMP folder (fast, and off the stick):
+    %TEMP%\\ghost-agent-browser-cache-<id>, one folder per browser profile, so two agents with other
+    data folders (a test or benchmark next to a real run) never share or delete each other's cache."""
+    where = os.path.normcase(os.path.abspath(str(profile or PROFILE)))
+    return temp_folder() / f"{BROWSER_CACHE_PREFIX}-{hashlib.sha256(where.encode('utf-8')).hexdigest()[:12]}"
+
+
+def _folder_key(folder):
+    return os.path.normcase(os.path.abspath(str(folder)))
+
+
+class FolderLock:
+    """The lock file in a browser cache folder, held open and locked (FolderLock.take)."""
+
+    held = set()  # the folders whose lock this process holds (another lock on them fails here too)
+
+    def __init__(self, f, folder):
+        self.f = f
+        self.key = _folder_key(folder)
+        FolderLock.held.add(self.key)
+
+    @classmethod
+    def holds(cls, folder):
+        """True when this process holds the lock of `folder`."""
+        return _folder_key(folder) in cls.held
+
+    @classmethod
+    def take(cls, folder):
+        """The lock of `folder` (created when missing), or None when another agent holds it."""
+        try:
+            Path(folder).mkdir(parents=True, exist_ok=True)
+            f = open(Path(folder) / CACHE_LOCK_FILE, "a+b")
+        except OSError:
+            return None
+        try:
+            import msvcrt
+        except ImportError:
+            return cls(f, folder)  # not Windows: no lock, the folder is simply used
+        try:
+            f.seek(0)
+            msvcrt.locking(f.fileno(), msvcrt.LK_NBLCK, 1)
+        except OSError:
+            f.close()
+            return None
+        return cls(f, folder)
+
+    def release(self):
+        if self.f is None:
+            return
+        try:
+            import msvcrt
+            self.f.seek(0)
+            msvcrt.locking(self.f.fileno(), msvcrt.LK_UNLCK, 1)
+        except (ImportError, OSError, ValueError):
+            pass
+        try:
+            self.f.close()
+        except OSError:
+            pass
+        self.f = None
+        FolderLock.held.discard(self.key)
+
+
+def empty_folder(folder, keep=()):
+    """Delete everything in a folder except the names in `keep` (what cannot be deleted stays)."""
+    try:
+        children = list(Path(folder).iterdir())
+    except OSError:
+        return
+    for p in children:
+        if p.name in keep:
+            continue
+        try:
+            if p.is_dir() and not p.is_symlink():
+                shutil.rmtree(p, ignore_errors=True)
+            else:
+                p.unlink()
+        except OSError:
+            pass
+
+
+def remove_browser_cache(folder, lock):
+    """Delete a browser cache whose lock is held: its contents first, then the lock and the folder.
+    When something cannot be deleted yet (a file the browser has not let go of), the lock file stays
+    with it, so the next start deletes the rest at once instead of after UNLOCKED_CACHE_AGE."""
+    empty_folder(folder, keep={CACHE_LOCK_FILE})
+    lock.release()
+    try:
+        if any(p.name != CACHE_LOCK_FILE for p in Path(folder).iterdir()):
+            return
+        (Path(folder) / CACHE_LOCK_FILE).unlink()
+        Path(folder).rmdir()
+    except OSError:
+        pass  # another agent took the folder over in between: it is that agent's now
+
+
+def is_browser_cache_name(name):
+    return name == BROWSER_CACHE_PREFIX or re.fullmatch(re.escape(BROWSER_CACHE_PREFIX) + r"-[0-9a-f]{12}", name)
+
+
+def browser_cache_folders(keep=None):
+    """The agents' browser cache folders in TEMP (real folders with one of their names), except `keep`."""
+    keep = _folder_key(keep) if keep else None
+    try:
+        return [p for p in temp_folder().iterdir()
+                if is_browser_cache_name(p.name) and p.is_dir() and not p.is_symlink()
+                and not (hasattr(p, "is_junction") and p.is_junction()) and _folder_key(p) != keep]
+    except OSError:
+        return []
+
+
+def held_by_another_agent(folder):
+    """True when another running agent holds the lock of a browser cache."""
+    if FolderLock.holds(folder) or not (Path(folder) / CACHE_LOCK_FILE).exists():
+        return False
+    lock = FolderLock.take(folder)
+    if lock is None:
+        return True
+    lock.release()
+    return False
+
+
+def browser_cache_is_stale(folder):
+    """True when no running agent holds a browser cache: its lock is free, or it has no lock file and is
+    older than UNLOCKED_CACHE_AGE (one from before the lock; a younger one may be being set up)."""
+    if FolderLock.holds(folder):
+        return False
+    if (Path(folder) / CACHE_LOCK_FILE).exists():
+        return not held_by_another_agent(folder)
+    try:
+        return time.time() - Path(folder).stat().st_mtime >= UNLOCKED_CACHE_AGE
+    except OSError:
+        return False
+
+
+def browser_caches_to_forget():
+    """[(what, folder)] for /forget-pc: this agent's browser cache (also while its browser runs) and the
+    caches earlier runs left that no running agent holds, such as one from another data folder or from
+    when the stick had another drive letter. Caches other running agents use are not listed."""
+    own = _folder_key(browser_cache_dir())
+    found = []
+    for folder in browser_cache_folders():
+        if held_by_another_agent(folder):
+            continue
+        if FolderLock.holds(folder) or _folder_key(folder) == own:
+            found.append(("the browser's cache", folder))
+        elif browser_cache_is_stale(folder):
+            found.append(("a browser cache left by an earlier run", folder))
+    return found
+
+
+def delete_browser_cache(folder):
+    """Delete a browser cache that no running agent holds (see browser_cache_is_stale). True when it
+    is gone."""
+    folder = Path(folder)
+    if (folder / CACHE_LOCK_FILE).exists():
+        lock = FolderLock.take(folder)
+        if lock is None:
+            return False
+        remove_browser_cache(folder, lock)
+    elif browser_cache_is_stale(folder):
+        shutil.rmtree(folder, ignore_errors=True)
+    return not folder.exists()
+
+
+def prune_browser_caches(keep=None):
+    """Delete the browser caches in TEMP that no running agent holds: ones left by a window closed
+    with its X button, or by a crash. A cache whose lock another agent holds is never touched, and
+    `keep` (this agent's own) neither. Returns how many were deleted."""
+    return sum(delete_browser_cache(folder) for folder in browser_cache_folders(keep))
 
 
 def prune_screenshots(days=7):
@@ -523,6 +796,9 @@ SETTING_MIN = {
     "moe_cache_mib": 0, "moe_cache_cap_mib": 0, "moe_cache_cpu_share": 0.0, "op_offload_min_batch": 1,
 }
 SETTING_MAX = {"port": 65535, "top_p": 1.0, "min_p": 1.0, "settle_seconds": 60.0, "moe_cache_cpu_share": 1.0}
+# llama.cpp keeps the sampling seed in 32 bits (and -1 means a random one), so a bigger seed would be
+# cut down to another number without a word.
+SEED_MAX = 2**32 - 1
 
 
 class BadSetting(ValueError):
@@ -666,6 +942,8 @@ def check_setting(key, value):
         value = low
     if key == "ctx_size" and 0 < value < 2048:
         raise BadSetting("0 (the model profile's size) or at least 2048")
+    if key == "seed" and value != -1 and not 0 <= value <= SEED_MAX:
+        raise BadSetting(f"-1 (random) or a whole number from 0 to {SEED_MAX}")
     if isinstance(value, (int, float)) and not isinstance(value, bool):
         low, high = SETTING_MIN.get(key), SETTING_MAX.get(key)
         if low is not None and value < low:
@@ -808,7 +1086,8 @@ def check_related_settings(settings):
 # Preflight: problems that would otherwise show up late, after the Chrome step or the model load.
 # --------------------------------------------------------------------------------------------
 
-# RAM the model needs (GB) per profile in tools\profiles.json. Unknown models: their size plus 1 GB.
+# RAM the model needs (GB) per profile, for a tools\profiles.json without "ram_gb" (the file's own
+# values are the same). Unknown models: their size plus 1 GB.
 RAM_NEED_GB = {"fast": 22, "fast-q8": 40, "accurate": 19}
 RAM_HEADROOM_GB = 9  # Windows, the browser and everything else that is usually open
 
@@ -882,23 +1161,33 @@ def is_dense(settings):
     return str(active_profile(settings)[1].get("arch") or "moe").lower() == "dense"
 
 
+def profile_flag(prof, key):
+    """A true/false field of a profile in tools\\profiles.json, or None when it is missing or not a
+    true/false value (the caller then infers it)."""
+    value = prof.get(key)
+    return value if isinstance(value, bool) else None
+
+
 def takes_reasoning_effort(settings):
     """True when the model's chat template knows reasoning_effort (Holo4-27B's does; the 35B's template
-    rejects values it does not know). A profile may say so itself; otherwise dense models do."""
+    rejects values it does not know). The profile's "takes_reasoning_effort" says so; without it, dense
+    models do."""
     prof = active_profile(settings)[1]
-    return bool(prof.get("reasoning_effort", str(prof.get("arch") or "").lower() == "dense"))
+    flag = profile_flag(prof, "takes_reasoning_effort")
+    return flag if flag is not None else str(prof.get("arch") or "").lower() == "dense"
 
 
 def preserves_reasoning(settings):
     """True when the model's reasoning from earlier steps goes back into its context (the
-    preserve_reasoning setting). "auto" follows the profile: a profile may say so itself; otherwise
-    the dense 27B keeps it (its chat template is built to show past reasoning, which is how H Company
+    preserve_reasoning setting). "auto" follows the profile's "preserve_reasoning"; without it, the
+    dense 27B keeps it (its chat template is built to show past reasoning, which is how H Company
     serves it), and the fast profiles do not until a benchmark shows it helps them."""
     value = settings.get("preserve_reasoning", "auto")
     if isinstance(value, bool):
         return value
     prof = active_profile(settings)[1]
-    return bool(prof.get("preserve_reasoning", str(prof.get("arch") or "").lower() == "dense"))
+    flag = profile_flag(prof, "preserve_reasoning")
+    return flag if flag is not None else str(prof.get("arch") or "").lower() == "dense"
 
 
 def gb(n):
@@ -949,8 +1238,14 @@ def memory_status():
 
 
 def ram_need_gb(settings):
+    """GB of free RAM the model needs: its profile's "ram_gb" in tools\\profiles.json, else RAM_NEED_GB,
+    else (a model no profile lists) its size plus 1 GB."""
     path = model_path(settings)
     pin = pinned_files().get(path.name)
+    if pin and pin[1]:
+        ram = (load_profiles()["profiles"].get(pin[1]) or {}).get("ram_gb")
+        if isinstance(ram, (int, float)) and not isinstance(ram, bool) and 0 < ram < 10000:
+            return math.ceil(ram)
     if pin and pin[1] in RAM_NEED_GB:
         return RAM_NEED_GB[pin[1]]
     try:
@@ -1086,6 +1381,44 @@ def blocked_message(e, what):
     if code == 5:
         return f"Windows refused to start {what} (an organization rule may block unsigned programs on USB drives)."
     return None
+
+
+# llama.cpp's Windows builds need Microsoft's Visual C++ 2015-2022 runtime, which is not on the stick
+# (Microsoft's license lets only its own installer put it on a PC). Most PCs have it in System32.
+VC_RUNTIME_DLLS = ("msvcp140.dll", "vcruntime140.dll", "vcruntime140_1.dll")
+VC_REDIST_URL = "https://aka.ms/vs/17/release/vc_redist.x64.exe"
+VC_REDIST_URL_ARM64 = "https://aka.ms/vs/17/release/vc_redist.arm64.exe"  # for a drive built with ARM64 parts
+STATUS_DLL_NOT_FOUND = 0xC0000135  # how a program ends when Windows cannot find a DLL it needs
+
+
+def vc_redist():
+    """(name, download address) of the Visual C++ Redistributable this drive's programs need. The build
+    puts one architecture on a drive, Python and llama.cpp alike, so this Python's tells: an ARM64 drive
+    needs the ARM64 one, and an x64 drive needs the x64 one even on an ARM64 PC (where it runs emulated)."""
+    if "ARM64" in sys.version.upper():
+        return "ARM64", VC_REDIST_URL_ARM64
+    return "x64", VC_REDIST_URL
+
+
+def vc_runtime_missing(folder):
+    """The Visual C++ runtime DLLs that are neither in System32 nor in `folder` (next to llama-server.exe),
+    by file. [] when all are there (or not on Windows)."""
+    if os.name != "nt":
+        return []
+    system32 = Path(os.environ.get("SystemRoot") or r"C:\Windows") / "System32"
+    return [dll for dll in VC_RUNTIME_DLLS if not (system32 / dll).is_file() and not (Path(folder) / dll).is_file()]
+
+
+def vc_runtime_advice(missing):
+    arch, url = vc_redist()
+    return ("llama-server.exe cannot start without the Microsoft Visual C++ 2015-2022 runtime, and this PC lacks "
+            f"{', '.join(missing) if missing else 'part of it'}. Install the \"Microsoft Visual C++ Redistributable "
+            f"({arch})\" from {url} (it needs administrator rights), then start GhostAgent again.")
+
+
+def dll_not_found(returncode):
+    """True when a process ended because Windows could not find a DLL it needs (STATUS_DLL_NOT_FOUND)."""
+    return returncode is not None and int(returncode) & 0xFFFFFFFF == STATUS_DLL_NOT_FOUND
 
 
 def quiet_crash_dialogs():
@@ -1354,6 +1687,11 @@ def list_devices(exe):
         return []
     except Exception:
         return []
+    if dll_not_found(out.returncode):
+        missing = vc_runtime_missing(exe.parent)
+        if missing:
+            raise SystemExit(vc_runtime_advice(missing))  # no build can run: each needs the runtime
+        return []  # another DLL of this build (a CUDA one, say): the next build may still work
     text = (out.stdout or "") + (out.stderr or "")
     devices = []
     for m in DEVICE_RE.finditer(text):
@@ -1489,12 +1827,40 @@ def remember_bad_backend(key, backend):
         pass
 
 
+def installed_backends():
+    """The llama.cpp builds on this drive, in BACKENDS order (an ARM64 drive has no cuda12 build)."""
+    return [name for name in BACKENDS if (BIN / name / "llama-server.exe").is_file()]
+
+
+def backend_is_auto(settings):
+    """True when the builds are tried in BACKENDS order, each one falling back to the next: backend
+    "auto", or a forced GPU build that is not on this drive. (A forced cpu build that is missing is
+    still CPU only: see pick_backend.)"""
+    wanted = settings.get("backend", "auto")
+    return wanted == "auto" or (wanted != "cpu" and wanted not in installed_backends())
+
+
 def pick_backend(settings, after=None):
     """(backend name, exe path, device or None). With backend "auto" the builds are tried in BACKENDS
     order: the first one that sees a usable GPU wins. after: a build that failed to load the model;
-    the search goes on with the builds behind it."""
+    the search goes on with the builds behind it. A build that is not installed is passed over (an
+    ARM64 drive has no cuda12 build); a forced GPU build that is missing is treated as "auto"
+    (backend_is_auto), and a forced cpu build that is missing is replaced by a GPU build without a GPU."""
+    installed = installed_backends()
+    if not installed:
+        raise SystemExit(f"No llama.cpp build was found in {BIN} (no llama-server.exe). Run Build GhostAgent.cmd again.")
     wanted = settings["backend"]
-    auto = wanted == "auto"
+    auto = backend_is_auto(settings)
+    if wanted == "cpu" and "cpu" not in installed:
+        # CPU only was asked for: every llama.cpp build has the CPU backend, and "--device none" keeps
+        # the GPU out of it (LlamaServer._start).
+        if after is None:
+            warn(f"There is no cpu build on this drive, so the {installed[-1]} build runs the model on the CPU "
+                 "(backend setting).")
+        return installed[-1], BIN / installed[-1] / "llama-server.exe", None
+    if auto and wanted != "auto" and after is None:
+        warn(f"The {wanted} build (backend setting) is not on this drive, so the builds are tried in the usual order: "
+             f"{', '.join(installed)}.")
     order = list(BACKENDS) if auto else [wanted]
     if after in order:
         order = order[order.index(after) + 1:]
@@ -1503,7 +1869,7 @@ def pick_backend(settings, after=None):
     cuda_device_seen = False
     for name in order:
         exe = BIN / name / "llama-server.exe"
-        if not exe.exists():
+        if name not in installed:
             continue
         if name == "cpu":
             break
@@ -1525,10 +1891,16 @@ def pick_backend(settings, after=None):
         if not auto:
             warn(f"The {name} build found no usable GPU; it will run on the CPU.")
             return name, exe, None
-    if auto and not cuda_device_seen and any(b.startswith("cuda") for b in order) and nvidia_gpu_present():
+    cuda = [b for b in order if b.startswith("cuda") and b in installed]
+    if auto and not cuda_device_seen and cuda and nvidia_gpu_present():
+        needs = {"cuda13": f"the cuda13 build needs version {CUDA13_MIN_DRIVER} or newer",
+                 "cuda12": "the cuda12 build needs version 550 or newer"}  # (only the builds on this drive)
         warn("This PC has an NVIDIA graphics card, but llama.cpp's CUDA builds cannot use it. Update the NVIDIA "
-             f"driver: the cuda13 build needs version {CUDA13_MIN_DRIVER} or newer, the cuda12 build 550 or newer.")
-    return "cpu", BIN / "cpu" / "llama-server.exe", None
+             f"driver: {', '.join(needs[b] for b in cuda)}.")
+    if "cpu" in installed:
+        return "cpu", BIN / "cpu" / "llama-server.exe", None
+    # No CPU build: the last GPU build runs on the CPU just as well (every llama.cpp build has the CPU backend).
+    return installed[-1], BIN / installed[-1] / "llama-server.exe", None
 
 
 # --------------------------------------------------------------------------------------------
@@ -1545,8 +1917,9 @@ REQUIRED_SERVER_FLAGS = ("-m", "--mmproj", "--alias", "--host", "--port", "-c", 
 # notice, when the build does not know them. tools\server-flags.json lists both groups.
 OPTIONAL_SERVER_FLAGS = ("--no-reasoning-preserve", "--checkpoint-min-step", "--cache-ram", "--no-cache-idle-slots",
                          "--cors-origins", "--no-slots", "--no-webui", "--device", "-ngl", "--cpu-moe", "--fit",
-                         "--moe-cache-mib", "--fit-target", "--moe-cache-cpu-share")
-# Of those, the ones that lock the server down: leaving one out gets a warning, not just a notice.
+                         "--moe-cache-mib", "--fit-target", "--moe-cache-cpu-share", "--image-max-tokens")
+# Of those, the ones that lock the server down: leaving one out gets a warning, not just a notice
+# ("lockdown" in tools\server-flags.json, which the build's smoke test reads too).
 LOCKDOWN_SERVER_FLAGS = ("--cors-origins", "--no-slots", "--no-webui")
 HELP_FLAG_RE = re.compile(r"(?<![\w-])(--?[A-Za-z][\w.-]*)")
 
@@ -1805,7 +2178,8 @@ DEFAULT_MOE_RESERVE_MIB = 4600
 # Compute buffers (prompt micro-batches of 2048 tokens, the vision encoder) and the CUDA context.
 COMPUTE_RESERVE_MIB = 1024
 # The vision projector is not counted by llama.cpp's --fit: measured on the 27B, the process ends
-# about the projector's size plus this much above the fit budget.
+# about the projector's size plus this much above the fit budget. Added on every --fit-target path
+# (the dense profile, and the MoE profiles' low-VRAM and auto-fit fallback).
 VISION_RESERVE_MIB = 384
 
 
@@ -1947,14 +2321,21 @@ class Progress:
 
 
 def console_progress(prefix="  "):
-    """An on_change for Progress that redraws one console line at most twice a second."""
+    """An on_change for Progress that redraws one console line at most twice a second (a LiveLine:
+    plain lines when the output is not a console). Its .line is ended once the progress is complete."""
     state = {"at": 0.0}
+    line = LiveLine(prefix)
 
     def show(progress):
         now = time.monotonic()
-        if now - state["at"] >= 0.5 or progress.done >= progress.total:
+        if progress.done >= progress.total:
+            if not state.get("closed"):
+                state["closed"] = True
+                line.close(progress.line())  # how it ended: shown either way
+        elif now - state["at"] >= 0.5:
             state["at"] = now
-            print(f"\r{prefix}{progress.line()}   ", end="", flush=True)
+            line.show(progress.line())
+    show.line = line
     return show
 
 
@@ -2211,7 +2592,7 @@ def model_files(settings, copy=None, progress=None, notes=None, cancel=None):
     local = [copy_model_file(src, dest, progress, notes, cancel) for src in files]
     prune_model_cache(dest, [f.name for f in files], notes)
     if own_line:
-        print()
+        progress.on_change.line.close()  # (already ended when the copy completed)
         for note in notes[shown:]:
             warn(note)
     return local
@@ -2265,9 +2646,10 @@ def gpu_layout_args(device, settings, auto_fit=False, emulate_free_mib=None, res
     Mixture-of-experts models (the fast profiles): with enough free VRAM, every expert stays in system
     RAM (--cpu-moe) and the VRAM left after `reserve_mib` (the rest of the model, the vision projector,
     the KV cache and compute buffers; see moe_reserve_mib) and fit_target_mib goes to the expert cache,
-    which measured faster than a static split. With less, llama.cpp fits the layers itself.
-    Dense models (the accurate profile) always let llama.cpp fit the layers (--fit-target). Its fit
-    does not count the vision projector, so the margin grows by the projector's size and its buffers.
+    which measured faster than a static split. With less (or auto_fit), llama.cpp fits the layers
+    itself. Dense models (the accurate profile) always let llama.cpp fit the layers (--fit-target).
+    llama.cpp's fit does not count the vision projector, so on every --fit-target path the margin
+    grows by the projector's size (mmproj_mib) and its buffers (VISION_RESERVE_MIB).
 
     emulate_free_mib (benchmarks: --emulate-free-vram-mib) lays the model out as if the GPU had at
     most that much free VRAM, so a big desktop card reproduces a small laptop card's layout. When
@@ -2288,9 +2670,9 @@ def gpu_layout_args(device, settings, auto_fit=False, emulate_free_mib=None, res
         if int(cache) >= 256:
             args += ["--moe-cache-mib", str(int(cache))]
         return args, True
-    margin = int(settings["fit_target_mib"]) + (real_free - free)
-    if dense:
-        margin += int(mmproj_mib) + VISION_RESERVE_MIB
+    # The projector and its buffers are on the GPU whichever way the layers are fitted (measured on
+    # the 27B: about 1.0-1.1 GB above the fit budget), so the MoE fallback leaves room for them too.
+    margin = int(settings["fit_target_mib"]) + (real_free - free) + int(mmproj_mib) + VISION_RESERVE_MIB
     return args + ["--fit-target", str(margin)], False
 
 
@@ -2502,7 +2884,19 @@ class LlamaServer:
 
     # -- choosing the build ---------------------------------------------------------------------
 
+    def _check_vc_runtime(self):
+        """Before the first build runs: say plainly when the Visual C++ runtime llama.cpp needs looks
+        missing. Only a warning, because a folder on the PATH may still hold it; a build that then
+        fails for want of it stops with the same advice (list_devices, wait_ready)."""
+        if ("vc",) in self._noticed:
+            return
+        self._noticed.add(("vc",))
+        missing = vc_runtime_missing(BIN / "cpu")
+        if missing:
+            self._say("warn", vc_runtime_advice(missing))
+
     def _choose_backend(self, after=None):
+        self._check_vc_runtime()
         self.choice = pick_backend(self.settings, after=after)
         backend, exe, device = self.choice
         if device:
@@ -2510,16 +2904,21 @@ class LlamaServer:
             if self.emulate_free_vram_mib is not None:
                 info(f"laying the model out as if only {min(device['free'], self.emulate_free_vram_mib)} MiB "
                      "of VRAM were free (--emulate-free-vram-mib)")
-        elif backend == "cpu" and self.failed:
-            warn("The GPU builds could not run the model, so it runs on the CPU only: this works, but each step "
-                 "will be slow.")
-        elif backend == "cpu":
-            warn("No supported GPU found. Running on the CPU only: this works, but each step will be slow.")
+        elif backend == "cpu" or self.settings.get("backend") == "cpu" or backend_is_auto(self.settings):
+            # (Without a CPU build on the drive, a GPU build runs on the CPU instead. A forced GPU build
+            # that found no GPU has said so itself.)
+            if self.failed:
+                warn("The GPU builds could not run the model, so it runs on the CPU only: this works, but each step "
+                     "will be slow.")
+            else:
+                warn("No supported GPU found. Running on the CPU only: this works, but each step will be slow.")
 
     def can_fall_back(self):
-        """Another build may still work: backend "auto", and this one is not the CPU build."""
-        return (self.settings.get("backend") == "auto" and self.choice is not None and self.choice[0] != "cpu"
-                and not self.quit_requested)
+        """Another build may still work: backend "auto" (or a forced build that is not on the drive), and
+        this one is not the CPU build (nor a GPU build already running on the CPU, for want of a CPU
+        build)."""
+        return (backend_is_auto(self.settings) and self.choice is not None and self.choice[0] != "cpu"
+                and self.choice[2] is not None and not self.quit_requested)
 
     def next_backend(self):
         """After a build could not load the model: move to the next build in BACKENDS that sees a GPU,
@@ -2692,7 +3091,8 @@ class LlamaServer:
             groups.append(("--no-reasoning-preserve", []))
         groups += [
             ("--load-mode", ["none"]),
-            ("--image-min-tokens", ["1024"]),
+            ("--image-min-tokens", [MIN_IMAGE_TILES]),
+            ("--image-max-tokens", [MAX_IMAGE_TILES]),  # optional: a build without it starts without the cap
             # One micro-batch per screenshot: the CPU-resident experts are streamed to the GPU once
             # per micro-batch while reading the prompt, so bigger batches mean fewer transfers.
             ("-b", ["2048"]),
@@ -2785,13 +3185,14 @@ class LlamaServer:
         """begin()'s background work: show the copy's progress until llama-server has been started.
         False when nothing was started."""
         shown = False
+        live = LiveLine()
         while self._launcher.is_alive():
             if self._progress is not None and self._progress.done:
-                print(f"\r  {self._progress.line()}   ", end="", flush=True)
+                live.show(self._progress.line())
                 shown = True
             self._launcher.join(0.5)
         if self._progress is not None and (shown or self._progress.done > self._progress.skipped):
-            print(f"\r  {self._progress.line()}   ", flush=True)  # how it ended, also for a quick copy
+            live.close(self._progress.line())  # how it ended, also for a quick copy
         self._launcher = None
         self._flush_notes()
         if self._launch_error is not None:
@@ -2808,17 +3209,26 @@ class LlamaServer:
         t0 = time.time()
         watch = LoadWatch(self.load_bytes, time.monotonic())
         last = None
+        live = LiveLine()
         stall_limit = STALL_SECONDS if self._can_ask() else UNATTENDED_STALL_SECONDS
         from_pc = bool(self.files) and _is_under(self.files[0], pc_data_dir())
         while True:
-            if self.proc.poll() is not None:
-                print()
+            code = self.proc.poll()
+            if code is not None:
+                live.close()
                 err("The model server stopped while loading. Last lines of its log:")
                 for line in self.tail(25):
                     print("    " + clean(line))
+                if dll_not_found(code):
+                    exe = Path(self.choice[1]) if self.choice else BIN / "cpu" / "llama-server.exe"
+                    missing = vc_runtime_missing(exe.parent)
+                    if missing:
+                        raise SystemExit(vc_runtime_advice(missing))  # every build needs it: no point trying another
+                    err(f"Windows could not find a DLL that {exe.parent.name}\\llama-server.exe needs. Run Build "
+                        "GhostAgent.cmd again to repair the llama.cpp files.")
                 return None
             if server_healthy(self.base):
-                print()
+                live.close()
                 if not from_pc:
                     record_load_speed(watch.average_rate())
                 return time.time() - t0
@@ -2828,15 +3238,15 @@ class LlamaServer:
             text = watch.line(time.time() - t0)
             if text != last:
                 last = text
-                print(f"\r  {text}   ", end="", flush=True)
+                live.show(text)
             if "slow" in events and not from_pc:
-                print()
+                live.close()
                 warn(f"The model loads at only {watch.rate() / 1e6:.0f} MB/s. That looks like a USB 2 port or a slow "
                      "stick: a USB 3 port (often blue, or marked SS) is much faster, and copy_model_to_pc = true in "
                      "settings.json keeps a copy on this PC, so later starts take seconds.")
                 last = None
             if watch.stalled_for(now) >= stall_limit:
-                print()
+                live.close()
                 what = self._stalled(stall_limit)
                 if what == "quit":
                     return None
@@ -3030,6 +3440,20 @@ class ForcedStop(KeyboardInterrupt):
     """Ctrl+C pressed twice within 3 seconds: leave right away, even mid browser action."""
 
 
+FORCE_QUIT_SECONDS = 3.0
+# When Ctrl+C was last pressed, shared by every handler: a console question (ask_console) puts its
+# own handler over the task's, and two presses across the two must still count as a double press.
+_LAST_CTRL_C = {"at": None}
+
+
+def ctrl_c_pressed():
+    """Note a Ctrl+C. True when it is the second press within FORCE_QUIT_SECONDS, with the task
+    already told to stop: the user wants out now."""
+    now = time.monotonic()
+    last, _LAST_CTRL_C["at"] = _LAST_CTRL_C["at"], now
+    return STOP.is_set() and last is not None and 0 <= now - last <= FORCE_QUIT_SECONDS
+
+
 @contextlib.contextmanager
 def ctrl_c_stops_task(clear=True):
     """While a task runs, Ctrl+C only sets STOP: the task then ends at the next safe point (the
@@ -3042,17 +3466,15 @@ def ctrl_c_stops_task(clear=True):
         return
     if clear:
         STOP.clear()
-    pressed = {"at": None}
+        _LAST_CTRL_C["at"] = None  # a new task: a press from the last one does not count
 
     def on_ctrl_c(signum, frame):
-        now = time.monotonic()
-        if STOP.is_set() and pressed["at"] is not None and now - pressed["at"] <= 3.0:
+        if ctrl_c_pressed():
             signal.signal(signal.SIGINT, previous)
             raise ForcedStop()
-        pressed["at"] = now
         STOP.set()
-        print(c("\n  Stopping after the current browser action... (press Ctrl+C again to quit GhostAgent now)", "33"),
-              flush=True)
+        print(c("\n  Stopping after the current browser action... (press Ctrl+C again within "
+                f"{FORCE_QUIT_SECONDS:.0f} s to quit GhostAgent now)", "33"), flush=True)
 
     previous = signal.signal(signal.SIGINT, on_ctrl_c)
     try:
@@ -3570,13 +3992,15 @@ KEY_ALIASES = {
 
 def _key_parts(combo):
     """The keys of one press in Playwright's spelling: 'ctrl+a' is ['Control', 'a'], 'pagedown' is
-    ['PageDown'], 'Control++' is ['Control', '+']. Empty parts are skipped. A letter in a chord is
-    lower case, except with Shift, where it is upper case: Playwright types exactly the character it
-    is given, so 'Shift+v' would type a lower-case v."""
+    ['PageDown'], 'Control++' is ['Control', '+']. Empty parts are skipped. A letter in a chord takes
+    the case a real keyboard gives it: upper case with Shift (any Shift key), lower case without.
+    Playwright sends exactly the character it is given and does not apply a held Shift to a letter,
+    so 'Shift+v' would type a lower-case v, and 'Control+T' would send a 'T' no keyboard sends
+    without Shift (checked on tools\\bench\\site\\fixtures\\keys.html)."""
     combo = combo.strip()
     plus_key = combo.endswith("++") or combo == "+"
     parts = [p for p in (combo[:-2] if plus_key else combo).split("+") if p] + (["+"] if plus_key else [])
-    shift = any(p.lower() == "shift" for p in parts[:-1])
+    shift = any(p.lower() in ("shift", "shiftleft", "shiftright") for p in parts[:-1])
     out = []
     for p in parts:
         low = p.lower()
@@ -4153,6 +4577,7 @@ def read_console_line(keyboard, timeout, prefill=""):
             if ch in ("\r", "\n"):
                 return "".join(buf), "answered"
             if ch == "\x03":  # Ctrl+C arriving as a key instead of a signal: the same as the signal
+                ctrl_c_pressed()  # (STOP is clear here, so this is a first press: noted for a second one)
                 STOP.set()
                 return None, "stopped"
             if ch == "\x1b":
@@ -4830,6 +5255,12 @@ def page_js(target, fn, arg=None, seconds=PAGE_JS_SECONDS, handle=False):
 
 TILE_PX = 32               # Holo4 reads a screenshot in 32x32-pixel tiles (16-pixel patches, merged 2x2)
 MIN_IMAGE_TILES = 1024     # llama-server's --image-min-tokens: smaller screenshots are enlarged to this
+# llama-server's --image-max-tokens: bigger screenshots are scaled down to this. Just above a normal
+# screenshot (a 1280x800 one is 1089 prompt tokens), so those are untouched; it matches
+# BIG_SCREENSHOT_PIXELS (1.3 MP, about 1270 tiles). Clicks are in 0-1000 coordinates relative to the
+# screenshot, so a scaled-down one still clicks the right place. Measured on 13 November 2026: the
+# cap shrinks the vision warm-up buffer by about 106 MiB of VRAM on both models, with the same answers.
+MAX_IMAGE_TILES = 1280
 BIG_SCREENSHOT_PIXELS = 1_300_000
 
 
@@ -4934,6 +5365,26 @@ HEADER_RULE = "=" * 20
 def page_title(text, limit=120):
     """A tab title for the model: control characters removed, one line, at most `limit` characters."""
     return one_line(clean(str(text or "")), limit)
+
+
+def title_is_address(title, url):
+    """True when a tab's title is only its address, which is what the browser reports for a page
+    without a title: the URL without its scheme, unescaped ('a b' for 'a%20b'), and for a bare host
+    without the slash ('127.0.0.1:8765' for http://127.0.0.1:8765/; Chromium keeps any other scheme,
+    so 'https://example.com' for https://example.com/). A real title that is only the start of the
+    address (a page titled 'localhost' on localhost) is kept."""
+    if not title:
+        return False
+    bare = url.split("://", 1)[-1]
+    forms = {url, bare}
+    try:
+        parts = urllib.parse.urlsplit(url)
+        if parts.path == "/" and not parts.query and not parts.fragment and bare.endswith("/"):
+            forms |= {bare[:-1], url[:-1]}
+    except ValueError:
+        pass
+    forms |= {urllib.parse.unquote(f) for f in forms}
+    return title in forms
 
 
 def observation_header(url, title, size, metrics, tabs, notes):
@@ -5126,6 +5577,7 @@ class Browser:
         self._local = {}              # host -> on this PC or the local network (looked up once)
         self._agent_navigating = False  # True while the agent itself leaves a page (beforeunload)
         self._cache_dir = None        # the browser's disk cache in TEMP, removed on close
+        self._cache_lock = None       # its FolderLock, while this agent's browser uses it
         self.target = None            # the UserBrowser attached to (chrome / user_edge)
         self._exe = None
         self._was_attached = False    # connected to the user's browser at some point in this session
@@ -5507,8 +5959,7 @@ class Browser:
         info_ = self._target_info(page)
         if info_:
             title, url = str(info_.get("title") or ""), str(info_.get("url") or page.url)
-            bare = url.split("://", 1)[-1]
-            return "" if title in (url, bare) or (title and bare.startswith(title)) else title
+            return "" if title_is_address(title, url) else title
         try:
             return str(page_js(page, "() => document.title", seconds=1.0) or "")
         except Exception:
@@ -5647,10 +6098,20 @@ class Browser:
                       "--no-default-browser-check", "--mute-audio"] + features))
         else:
             PROFILE.mkdir(parents=True, exist_ok=True)
-            # The cache sits in this PC's TEMP folder (fast, and off the stick) and is removed on
-            # close; one left by a window closed with its X button goes now.
+            # The cache sits in this PC's TEMP folder (fast, and off the stick), one folder per
+            # profile, and is removed on close. What a window closed with its X button left goes
+            # now, and so do caches no other running agent holds.
             self._cache_dir = browser_cache_dir()
-            shutil.rmtree(self._cache_dir, ignore_errors=True)
+            self._cache_lock = FolderLock.take(self._cache_dir)
+            if self._cache_lock is None:
+                # Another agent runs with this same profile (external_server allows that) and holds
+                # that cache. Its browser has the profile, so this one may end up in Edge with a
+                # profile of its own: it gets a cache of its own too, so the two never share one.
+                self._cache_dir = browser_cache_dir(f"{PROFILE}|{os.getpid()}")
+                self._cache_lock = FolderLock.take(self._cache_dir)
+            if self._cache_lock is not None:
+                empty_folder(self._cache_dir, keep={CACHE_LOCK_FILE})
+            prune_browser_caches(keep=self._cache_dir)
             opts = dict(
                 user_data_dir=str(PROFILE), headless=False,
                 viewport={"width": self.w, "height": self.h}, device_scale_factor=1,
@@ -5972,7 +6433,10 @@ class Browser:
             self._temp_profile = None
         if self._cache_dir is not None:
             # Copies of everything the browser showed: they should not stay on a PC the stick visited.
-            shutil.rmtree(self._cache_dir, ignore_errors=True)
+            # Only this agent's own (whose lock it holds).
+            if self._cache_lock is not None:
+                remove_browser_cache(self._cache_dir, self._cache_lock)
+                self._cache_lock = None
             self._cache_dir = None
 
     # -- observation ------------------------------------------------------------------------
@@ -7031,6 +7495,15 @@ NOTES_MAX_CHARS = 6000     # the whole notes message; the newest lines are kept
 NOTE_LINE_MAX = 1000       # one step's line
 OLD_RESULT_STEPS = 3       # tool results of the last this many steps stay whole ...
 OLD_RESULT_CHARS = 300     # ... older ones are cut to this many characters
+
+
+def old_result_steps(image_budget):
+    """How many recent steps keep their long tool results whole: OLD_RESULT_STEPS, or 2 with an
+    image_budget of 2. Nothing before the first screenshot an eviction removes may change (see
+    shorten_old_results), and with 2 screenshots that one is only 2 steps back: results 3 steps old are
+    already in front of it, so with 3 nothing would ever be shortened. Never fewer than 2 (with an
+    image_budget of 1 nothing is shortened until the history is trimmed): the newest result stays whole."""
+    return max(2, min(OLD_RESULT_STEPS, int(image_budget)))
 TRUNCATED = " [truncated]"
 UNTRUSTED_OPEN, UNTRUSTED_CLOSE = "<untrusted_page_text>", "</untrusted_page_text>"
 
@@ -7155,14 +7628,17 @@ def _shorten(text, limit):
     return part + TRUNCATED
 
 
-def shorten_old_results(messages, everywhere=False, steps=OLD_RESULT_STEPS, limit=OLD_RESULT_CHARS):
+def shorten_old_results(messages, everywhere=False, steps=OLD_RESULT_STEPS, limit=OLD_RESULT_CHARS, since=0):
     """Cut tool results from `steps` or more steps ago that are longer than `limit` characters (in
     practice reader_mode pages and long errors) to `limit` plus ' [truncated]'. Returns how many.
 
     The agent calls this only on steps whose prompt changes anyway (a screenshot was evicted, or the
     history was trimmed), and, unless `everywhere`, only before the oldest screenshot still kept:
     between evictions the prompt then only grows at the end, which keeps image_eviction "block"
-    fast. With the default image_budget of 3 that is exactly the results of 3 or more steps ago."""
+    fast. With the default image_budget of 3 that is exactly the results of 3 or more steps ago.
+    Nothing before message `since` changes (the first one the eviction changed: the server reuses
+    everything before it). So with "block" a long result of the step just before an evicted batch keeps
+    its length, until the history is trimmed. The agent passes steps=old_result_steps(image_budget)."""
     starts = step_starts(messages)
     if len(starts) < steps:
         return 0
@@ -7172,7 +7648,7 @@ def shorten_old_results(messages, everywhere=False, steps=OLD_RESULT_STEPS, limi
         if images:
             bound = min(bound, images[0][0])
     count = 0
-    for m in messages[:bound]:
+    for m in messages[max(0, since):bound]:
         content = m.get("content")
         if (m.get("role") == "tool" and isinstance(content, str) and len(content) > limit + len(TRUNCATED)
                 and not content.endswith(TRUNCATED)):
@@ -7243,7 +7719,10 @@ def trace_url(url):
     if not scheme:
         return None
     if u.netloc or scheme == "file":
-        host = (u.hostname or "") + (f":{port}" if port else "")
+        host = u.hostname or ""
+        if ":" in host:
+            host = f"[{host}]"  # an IPv6 address keeps its brackets, or its port could not be told apart
+        host += f":{port}" if port else ""
         return f"{scheme}://{host}{u.path}"
     if scheme == "about":
         return f"about:{u.path}"
@@ -7574,11 +8053,15 @@ class Agent:
                 if checkin > 0 and step > 1 and (step - 1) % checkin == 0:
                     with_alert(messages[-1], CHECKIN_ALERT.format(n=step - 1))
                 rec["t_observation"] = round(time.perf_counter() - t_obs, 3)
+                images = image_chunks(messages)
+                first_shot = images[0][0] if images else len(messages)  # where an eviction changes the prompt
                 rec["evicted"] = trim_images(messages, int(s["image_budget"]), str(s.get("image_eviction") or "rolling"),
                                              int(s.get("image_keep_after_evict") or 2))
                 if rec["evicted"] or trimmed:
-                    # The prompt changes here anyway: long tool results from older steps go too.
-                    shorten_old_results(messages, everywhere=trimmed)
+                    # The prompt changes here anyway: long tool results from older steps go too, but none
+                    # before the first change (after a trim that is early on anyway).
+                    shorten_old_results(messages, everywhere=trimmed, steps=old_result_steps(s["image_budget"]),
+                                        since=0 if trimmed else first_shot)
                 rec["images_in_prompt"] = count_images(messages)
                 rec["url"] = trace_url(getattr(self.browser, "last_url", None))
                 rec.update(getattr(self.browser, "last_shot", None) or {})
@@ -7592,6 +8075,7 @@ class Agent:
                 t0 = time.time()
                 status = {"phase": "reading the screen", "tokens": 0}
                 hint = step_status_hint()
+                live = LiveLine(every=None)  # without a console only the step's summary line below is written
 
                 def on_event(kind, val):
                     if kind == "prompt":
@@ -7601,13 +8085,12 @@ class Agent:
                     elif kind in ("reasoning", "content", "tool"):
                         status["tokens"] += 1
                         status["phase"] = "thinking" if kind == "reasoning" else "acting"
-                    print(f"\r  step {step}: {status['phase']} ... {time.time() - t0:4.0f}s  {status['tokens']} tok{hint}   ",
-                          end="", flush=True)
+                    live.show(f"step {step}: {status['phase']} ... {time.time() - t0:4.0f}s  {status['tokens']} tok{hint}")
 
                 try:
                     msg = stream_chat(self.server.base, body, on_event, api_key=getattr(self.server, "api_key", None))
                 finally:
-                    print("\r" + " " * (70 + len(hint)) + "\r", end="", flush=True)
+                    live.clear(70 + len(hint))
                     rec["t_model"] = round(time.time() - t0, 3)
                 dt = time.time() - t0
                 timings = msg["timings"] or {}
@@ -7787,7 +8270,7 @@ def pc_leftovers(settings=None):
         ("the copy of the model", base / "models"),
         ("the copy of the model from before the rename", base.parent / "HoloAgent"),
         ("saved screenshots", screenshots_dir()),
-        ("the browser's cache", browser_cache_dir()),
+        *browser_caches_to_forget(),
         ("the browser profile kept on this PC", base / "browser-profile"),
         ("the Edge profile kept on this PC", base / "browser-profile-edge"),
         ("the agent's Chrome profile on this PC (browser chrome-agent)", base / "chrome-profile"),
@@ -7829,12 +8312,23 @@ def forget_pc(settings, later):
     if answer not in ("y", "yes"):
         info("Nothing was deleted.")
         return
+    own_cache = _folder_key(browser_cache_dir())
     for what, path in items:
+        if (is_browser_cache_name(path.name) and path.parent == temp_folder() and not FolderLock.holds(path)
+                and _folder_key(path) != own_cache):
+            # A cache an earlier run left goes only while no agent holds it (one may have started since),
+            # and is never left for later: by then it may be another agent's.
+            if delete_browser_cache(path):
+                info(f"deleted {what}")
+            else:
+                info(f"{what} is now in use by another GhostAgent window, so it was left alone")
+            continue
         if remove_path(path):
             info(f"deleted {what}")
         else:
             later.append((what, path))
             info(f"{what} is in use; it is deleted when GhostAgent closes")
+    prune_browser_caches(keep=browser_cache_dir())  # caches left by earlier runs that no agent holds
     base = pc_data_dir()
     try:
         base.rmdir()  # only when empty
