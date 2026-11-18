@@ -78,7 +78,8 @@ class StepTraceTests(unittest.TestCase):
             {"reasoning": "Find.", "tool_calls": [call("ctrl_f_web", query=SECRET_QUERY)]},
             {"reasoning": "Done.", "tool_calls": [call("answer", content=SECRET_ANSWER)]},
         ]
-        agent, fake, folder, result = self.run_task(script)
+        # Rolling eviction: the oldest screenshot goes at step 4 and three stay (checked below).
+        agent, fake, folder, result = self.run_task(script, image_eviction="rolling")
         self.assertEqual(result, SECRET_ANSWER)
         lines = read_jsonl(steps_file(folder))
         self.assertEqual([l["kind"] for l in lines], ["step"] * 4 + ["task"])
@@ -209,8 +210,8 @@ class StepTraceTests(unittest.TestCase):
             captured.append(json.loads(json.dumps(body)))
             return real(base, body, on_event, api_key=api_key)
 
-        with patch_agent("stream_chat", spy):
-            agent, fake, folder, result = self.run_task(script, trace_messages=True)
+        with patch_agent("stream_chat", spy):  # rolling eviction: step 4 still sends three screenshots
+            agent, fake, folder, result = self.run_task(script, trace_messages=True, image_eviction="rolling")
         self.assertEqual(result, "ok")
         task_dir = folder / "logs" / "replay" / agent.last["task_id"]
         tasks = replay.discover(folder / "logs" / "replay")

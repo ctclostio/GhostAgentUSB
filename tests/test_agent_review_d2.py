@@ -56,7 +56,7 @@ class ReviewFixTests(unittest.TestCase):
 
     def test_the_no_move_hint_names_the_schema_argument(self):
         browser = AGENT.Browser.__new__(AGENT.Browser)
-        browser.s = settings()
+        browser.s = settings(tool_schema="classic")
         self.assertIn("with x,y", browser._no_move)
         browser.s = settings(tool_schema="h")
         self.assertIn("with scroll_element", browser._no_move)
@@ -67,7 +67,8 @@ class ReviewFixTests(unittest.TestCase):
         browser.prompt_note = "\n- You work in your own window of the user's everyday Chrome."
         script = [{"tool_calls": [call("answer", content="one")]}, {"tool_calls": [call("answer", content="two")]},
                   {"tool_calls": [call("answer", content="three")]}]
-        agent, fake, folder = make_agent(self, script, browser=browser)
+        # The classic prompt: its task messages end with the user's words (h adds the time of day).
+        agent, fake, folder = make_agent(self, script, browser=browser, prompt_version="classic")
         run(agent, "first")
         browser.prompt_note = ""  # Chrome was gone; the browser on the drive took over
         run(agent, "second")

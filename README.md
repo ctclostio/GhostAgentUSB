@@ -4,7 +4,7 @@ A local AI that uses your web browser, carried on a USB stick.
 
 Plug the stick into a Windows PC, double-click the launcher and type a task like *"find the weather in Denver this weekend"*. A vision model looks at the browser window, then clicks, types and scrolls until the task is done and gives you the answer. No cloud AI is involved. The model runs on the PC itself through llama.cpp, listens only on `127.0.0.1`, and answers only requests that carry a key made for that run.
 
-This is version 0.2.0. The speed figures on this page were measured **before** this version's changes; new numbers will be measured with the benchmark in `tools/bench`, and this page will be updated. Several new behaviours are built in but stay switched off until that benchmark decides (see [Settings that wait for a benchmark](#settings-that-wait-for-a-benchmark)). [DECISIONS.md](DECISIONS.md) records why each server flag and default is what it is.
+This is version 0.2.0. Its defaults were chosen with the benchmark in `tools/bench`, run on a desktop whose GPU was held to a laptop's 8 GB (see [Speed](#speed)). Laptop numbers are still to come; `Run benchmark.cmd` measures any PC. [DECISIONS.md](DECISIONS.md) records why each server flag and default is what it is.
 
 | Part | What it is |
 |---|---|
@@ -107,7 +107,7 @@ GhostAgent runs H Company's Holo4 models. They are vision models trained for com
 
 The accurate profile's license does not allow commercial use, which can include work done for an employer: check before using it at work. It is downloaded only with `-Profile accurate` or `-Profile all`, and its license is in `GhostAgent/licenses/Holo4-27B-LICENSE.txt`.
 
-To switch: `"Build GhostAgent.cmd" -Profile accurate`, then put `"model_profile": "accurate"` in `GhostAgent\settings.json`. The default stays `fast` until the benchmark has measured each profile's success rate and time per task on an 8 GB laptop; whether the more capable but slower 27B is worth it is then your call, with those numbers in hand.
+To switch: `"Build GhostAgent.cmd" -Profile accurate`, then put `"model_profile": "accurate"` in `GhostAgent\settings.json`. The default is `fast`. The other two profiles have not been through the benchmark (each would take several GPU hours on an 8 GB card); `Run benchmark.cmd` measures them on your own PC (see [Benchmarks and tests](#benchmarks-and-tests)), and whether the slower 27B is worth it is your call.
 
 ### Why Holo4, and what else was considered
 
@@ -135,9 +135,15 @@ On a laptop with an 8 GB NVIDIA GPU and 64 GB of RAM, running the fast model fro
 - The median task took about 26 steps. 10 of the 27 tasks reached the 40-step limit that existed then, and **a 40-step task took 16 to 21 minutes**.
 - Loading the model from the USB stick (about 70 MB/s) took about 5 minutes; from the copy on the PC's SSD, 10 to 25 seconds.
 
-### Not measured yet
+### Measured with version 0.2.0
 
-Version 0.2.0 changes the model server's prompt-cache settings so it can reuse more of its earlier work at each step, and adds opt-in switches that should save more (block screenshot eviction, adaptive settling). None of this has been timed on the laptop yet. The benchmark in `tools/bench` (12 local tasks with automatic checks, plus a replay of recorded steps) will measure it, and this section will be updated with the new numbers.
+On a desktop whose GPU was held to the laptop's free memory (7070 MiB, with `--emulate-free-vram-mib`), fast profile, llama.cpp b11669, the 12 benchmark tasks run once each (18 November 2026):
+
+- With this version's defaults, 11 of the 12 tasks passed. Leaving out `loop-trap` (a Next button that does nothing; the model failed to give up on it within 40 steps in most runs, with every setting), a step took **6.7 s** on average against 9.5 s with the defaults from before the benchmark, on almost the same number of steps (71 against 69). The median step took 7.0 s against 9.8 s.
+- Reading the prompt took 2.9 s per step instead of 5.4 s (block eviction lets the model server reuse 78% of each prompt instead of 45%), and the agent's own part of a step (screenshot, action, waiting for the page) 0.4 s instead of 1.1 s (adaptive settling).
+- A desktop CPU runs the parts of the model that stay in system RAM faster than a laptop's, so steps on the laptop will take longer, generation most of all. Reading the prompt, the part this version cuts the most, was 70% of a laptop step before 0.2.0.
+
+`Run benchmark.cmd` runs the same 12 tasks on any PC and prints the successes and the time per step.
 
 ### The accurate profile
 
@@ -173,23 +179,21 @@ The ones most people need:
 
 The safety settings (`dialog_policy`, `confirm_risky_actions`, `allowed_hosts`, `allow_file_urls`, `allow_internal_pages`, `allow_unsandboxed_browser`, `downloads`, `download_max_mb`, `profile_on_stick`) are described under [Safety](#safety). The model server's tuning settings are in DECISIONS.md.
 
-### Settings that wait for a benchmark
+### Settings chosen by the benchmark
 
-These change what the model sees or how it acts. Each is fully built, but its default keeps the behaviour from before 0.2.0 until the benchmark compares the two on the same tasks and seeds. A new default is adopted only if it costs at most 1 success in 36 runs.
+These change what the model sees or how it acts. Each was run on the 12 benchmark tasks against the defaults from before 0.2.0, one run per task ([DECISIONS.md](DECISIONS.md#benchmark-results) has the full table). The only task that failed in any of these runs was `loop-trap` (a Next button that does nothing), which passed or failed from run to run with every setting.
 
-| Setting | Default now | Alternative | Trade-off |
+| Setting | Default | Alternative | Measured |
 |---|---|---|---|
-| `image_eviction` | `rolling` | `block` (with `image_keep_after_evict` 2 or 1) | Block mode lets the server reuse its work between screenshot drops, so steps should be much faster; the model then sees 2 to 3 (or 1 to 3) earlier screenshots instead of always 3. |
-| `observation_format` | `classic` | `header` | The address, title, page size and scroll position before each screenshot, and how much of the page lies above and below after it, as H Company's own agent does. |
-| `prompt_version` | `classic` | `h` | Longer instructions written along H Company's published Holo4 browser guidance. Costs a few seconds once per conversation. |
-| `tool_schema` | `classic` | `h` | H Company's Holo4 tool names and arguments, a drag-and-drop tool, and an outcome with each answer (success, partial, infeasible or blocked). |
-| `write_enter_default` | `false` | `true` | Enter after typing unless the model says otherwise, as Holo4 was trained. A message could then be sent by mistake; the Send confirmation guards against that. |
-| `preserve_reasoning` | `auto` (on for accurate, off for fast) | `true`, `false` | The model keeps its own earlier reasoning in context: about 100 more tokens per step. |
-| `settle_mode` | `fixed` | `adaptive` | Waits after an action only until the page is quiet. Faster, but a page that changes again a moment later may be captured half-drawn. |
-| `snap_viewport` | `false` | `true` | The page area in whole 32-pixel tiles (1280x800 becomes 1280x832), so the model server reads each screenshot without resampling it. |
+| `image_eviction`, `image_keep_after_evict` | `block`, 1 | `rolling`; `block` with 2 | Block keeping 1 cut prompt reading from 5.4 to 2.8 s per step and the time per step by 11%. The model sees 1 to 3 earlier screenshots instead of always 3. Keeping 2 was no faster overall. |
+| `prompt_version`, `tool_schema` | `h`, `h` | `classic` | Instructions, tool names and arguments along H Company's published Holo4 guidance, a drag-and-drop tool, and an outcome with each answer (success, partial, infeasible or blocked). All 12 tasks passed, with 5.5% less time per step. |
+| `settle_mode` | `adaptive` | `fixed` (1.0 s) | Waits after an action only until the page is quiet: 0.4 s per step outside the model instead of 1.0 s. A page that changes again a moment later may be captured half-drawn. A `wait_web` the model asks for always lasts as long as asked. |
+| `observation_format` | `classic` | `header` | The address, title and scroll position around each screenshot, as H Company's own agent does: 13% more time per step and no task gained, so off. |
+| `preserve_reasoning` | `auto` (on for accurate, off for fast) | `true`, `false` | The fast model keeping its own earlier reasoning: the same results, no faster. |
+| `snap_viewport` | `false` | `true` | The page area in whole 32-pixel tiles (1280x832), so screenshots are not resampled: no measurable gain on 9 tasks, so off. |
+| `write_enter_default` | `false` | `true` | Not benchmarked. Enter after typing unless the model says otherwise, as Holo4 was trained; a message could then be sent by mistake (the Send confirmation guards against that). |
 
-Also waiting for measurements: the default model profile, the llama.cpp version (b11669 or b12359), and the server tuning values described in DECISIONS.md. Two changes ship switched on: every tool call in a reply now runs, in order (the rest of a step is skipped after a failure or a page change), and the next task continues the conversation.
-
+Not benchmarked, by choice: the `fast-q8` and `accurate` profiles and llama.cpp b12359 (it builds and passes the smoke test). Two changes ship switched on: every tool call in a reply now runs, in order (the rest of a step is skipped after a failure or a page change), and the next task continues the conversation.
 
 ## Browser modes
 
@@ -276,6 +280,8 @@ On a non-English Chrome the switch's label is translated; it is the switch on th
 ```
 GhostAgent\python\python.exe -I GhostAgent\agent\ghost_agent.py --tasks-file tools\bench\suite.json --results GhostAgent\logs\bench.jsonl --browser bundled
 ```
+
+Or double-click **`Run benchmark.cmd`**: it runs the 12 tasks the same way, then prints the score (successes, steps and time per step) and keeps every file in `GhostAgent\logs\bench-*`. `--tasks a,b` runs only those tasks, `--label NAME` adds a word to the file names, and any other option goes to the agent, for example `--settings-override try.json` to try other settings or a model profile. Expect about 10 to 15 minutes on a fast PC, much longer on a laptop.
 
 `--emulate-free-vram-mib N` lays the model out as if the GPU had only N MiB free (to reproduce an 8 GB laptop on a bigger card), and `--affinity-mask HEX` keeps the model server on chosen CPUs. When the output goes to a file or a pipe rather than a console, it is plain text: no colours, and progress is written as an occasional line instead of one line redrawn in place.
 

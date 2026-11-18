@@ -249,8 +249,17 @@ class ImageEvictionTests(unittest.TestCase):
         self.assertEqual(s["image_keep_after_evict"], 1)
         self.assertIn('"image_keep_after_evict" is 2', out.getvalue())
         with quiet() as out:
-            s = AGENT.check_related_settings(settings(image_budget=2, image_keep_after_evict=2))
+            s = AGENT.check_related_settings(settings(image_eviction="rolling", image_budget=2, image_keep_after_evict=2))
         self.assertEqual((s["image_keep_after_evict"], out.getvalue()), (2, ""))  # rolling: not used, no warning
+        # The default, block keeping 1, fits any budget of 2 or more ...
+        with quiet() as out:
+            s = AGENT.check_related_settings(settings(image_budget=2))
+        self.assertEqual((s["image_eviction"], s["image_keep_after_evict"], out.getvalue()), ("block", 1, ""))
+        # ... and a keep raised to 2 is checked against the budget under the default eviction.
+        with quiet() as out:
+            s = AGENT.check_related_settings(settings(image_budget=2, image_keep_after_evict=2))
+        self.assertEqual(s["image_keep_after_evict"], 1)
+        self.assertIn('"image_keep_after_evict" is 2', out.getvalue())
 
 
 class LoopTests(unittest.TestCase):
@@ -270,7 +279,7 @@ class LoopTests(unittest.TestCase):
         return [l for l in read_jsonl(steps_file(folder)) if l["kind"] == "step"], fake
 
     def test_block_eviction_keeps_the_prompt_append_only_between_batches(self):
-        rolling, _ = self.run_steps(9)
+        rolling, _ = self.run_steps(9, image_eviction="rolling")
         block, fake = self.run_steps(9, image_eviction="block", image_keep_after_evict=2)
         self.assertEqual([l["images_in_prompt"] for l in block], [1, 2, 3, 2, 3, 2, 3, 2, 3])
         self.assertEqual([l["evicted"] for l in block], [False, False, False, True, False, True, False, True, False])
@@ -288,7 +297,8 @@ class LoopTests(unittest.TestCase):
         # A small context: the trim happens after a few steps, and the requests after it stay valid.
         script = [{"content": f"step {n} note", "tool_calls": [call("click_web", element=f"b{n}", x=n, y=n)]}
                   for n in range(1, 12)] + [{"tool_calls": [call("answer", content="done")]}]
-        agent, fake, folder = make_agent(self, script=script, ctx_size=4096)
+        # The classic prompt: the first task message is the task alone (h adds the time of day).
+        agent, fake, folder = make_agent(self, script=script, ctx_size=4096, prompt_version="classic")
         with quiet():
             self.assertEqual(agent.run("Click around."), "done")
         assert_requests_valid(self, fake)
@@ -310,7 +320,9 @@ class ReaderPagingTests(SiteBrowserCase):
         script.append({"tool_calls": [call("answer", content="read it all")]})
         b = self.start("/fixtures/reader.html?paras=49")
         fake = helpers.start_fake_llama(self, script=script, validate="strict")
-        agent = AGENT.Agent(settings(settle_seconds=0.1), StubServer(fake.base), b)
+        # Rolling eviction: a screenshot leaves at every step past the third, so each step's shortening
+        # reaches the results 3 steps back (block cuts only behind its batches; see ShortenOldResultsTests).
+        agent = AGENT.Agent(settings(settle_seconds=0.1, image_eviction="rolling"), StubServer(fake.base), b)
         with quiet():
             self.assertEqual(agent.run("Read the article."), "read it all")
         assert_requests_valid(self, fake)

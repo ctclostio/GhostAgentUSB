@@ -147,6 +147,7 @@ class TabTests(SiteBrowserCase):
         self.assertEqual(b.page.title(), "signed-in")
 
     def test_a_tab_the_page_opens_later_is_listed_not_switched_to(self):
+        # wait_web lasts the 3.5 s asked for, past the page's 2.5 s timer.
         b = self.start("/fixtures/popups.html?timer=off&later=2500")
         page = b.page
         result = self.click(b, "#later", "Open a tab later")
@@ -320,15 +321,13 @@ class AdaptiveSettleTests(SiteBrowserCase):
         self.assertGreaterEqual(b.last_timings["settle"], 0.95)  # the slow page takes 3 s
         self.assertLess(b.last_timings["settle"], 2.0)
 
-    def test_wait_web_ends_once_the_page_is_quiet(self):
+    def test_wait_web_lasts_as_long_as_asked_on_a_quiet_page(self):
+        # The model asks to wait when it expects something a quiet page does not show yet.
         b = self.start("/fixtures/delayed.html?ms=700", settle_mode="adaptive")
         t0 = time.monotonic()
-        self.act(b, "wait_web", seconds=6)
-        self.assertLess(time.monotonic() - t0, 3.0)
+        self.act(b, "wait_web", seconds=2)
+        self.assertGreaterEqual(time.monotonic() - t0, 2.0)
         self.assertIn("(loaded)", b.page.title())
-        t0 = time.monotonic()
-        self.act(b, "wait_web", seconds=0.4)
-        self.assertGreaterEqual(time.monotonic() - t0, 0.4)  # never shorter than asked, up to 1 s
 
     def test_go_to_waits_for_the_page(self):
         b = self.start("/fixtures/long.html", settle_mode="adaptive")

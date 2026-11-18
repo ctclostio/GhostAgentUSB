@@ -47,22 +47,22 @@ DEFAULT_SETTINGS = {
     "start_url": "https://www.bing.com",
     "viewport_width": 1280,
     "viewport_height": 800,
-    # Benchmark switch: page area in whole 32-pixel tiles, at least 1024 of them (no resampling).
+    # Page area in whole 32-pixel tiles, at least 1024 of them (no resampling); measured no gain, so off.
     "snap_viewport": False,
     "refit_window_each_task": True,
     "max_steps": 0,  # 0 = no limit
     "progress_checkin_steps": 0,  # 0 = never
     "image_budget": 3,
-    # Benchmark switch: "rolling" (today's: the oldest screenshot goes every step) or "block" (several
-    # at once, down to image_keep_after_evict, so the prompt only grows in between).
-    "image_eviction": "rolling",
-    "image_keep_after_evict": 2,
-    # Benchmark switch: "classic" (today's) or "header" (scroll position and page extent).
+    # "block" (several screenshots go at once, down to image_keep_after_evict, so the prompt only grows
+    # in between) or "rolling" (the oldest goes every step). block/1 measured faster at equal success.
+    "image_eviction": "block",
+    "image_keep_after_evict": 1,
+    # "classic" or "header" (scroll position and page extent); header measured slower, no more accurate.
     "observation_format": "classic",
-    # Benchmark switches: the instructions ("classic" or "h", after H Company's Holo4 guidance) and the
-    # tools' names and arguments ("classic" or "h", H Company's Holo4 web tools).
-    "prompt_version": "classic",
-    "tool_schema": "classic",
+    # The instructions ("h", after H Company's Holo4 guidance, or the short "classic") and the tools'
+    # names and arguments ("h", H Company's Holo4 web tools, or "classic"). h measured faster, same successes.
+    "prompt_version": "h",
+    "tool_schema": "h",
     "write_enter_default": False,
     "temperature": 0.8,
     "top_k": 20,
@@ -75,8 +75,8 @@ DEFAULT_SETTINGS = {
     # profiles until a benchmark decides, on for accurate), or true / false.
     "preserve_reasoning": "auto",
     "settle_seconds": 1.0,
-    # Benchmark switch: "fixed" (today's) or "adaptive" (per action, ends once the page is quiet).
-    "settle_mode": "fixed",
+    # "adaptive" (per action, ends once the page is quiet) or "fixed" (settle_seconds after every action).
+    "settle_mode": "adaptive",
     "browser": "chrome",
     "save_screenshots": False,
     "downloads": "save",

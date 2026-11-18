@@ -1987,22 +1987,11 @@ class Browser:
 
     def _wait(self, page, args):
         """wait_web. In short slices, so Ctrl+C (STOP) ends a long wait within a quarter of a second.
-        settle_mode adaptive ends it early once the page has been quiet (no requests for 500 ms and an
-        unchanged DOM), but never before min(1 s, the time asked for)."""
+        It always lasts the time asked for, in either settle_mode: the model asks to wait when it
+        expects something a quiet page does not show yet (a timer, an animation, a slow widget)."""
         seconds = min(60.0, max(0.0, float(args.get("seconds", 2) or 0)))
-        start = time.monotonic()
-        end, least = start + seconds, start + min(1.0, seconds)
-        adaptive = str(self.s.get("settle_mode") or "fixed") == "adaptive"
-        if adaptive:
-            self._start_quiet(page)
+        end = time.monotonic() + seconds
         while not STOP.is_set():
-            now = time.monotonic()
-            if now >= end:
+            if time.monotonic() >= end:
                 break
-            if adaptive and now >= least:
-                live = self._live_page()
-                if not self._loading(live) and self._network_quiet(live, 0.5):
-                    quiet = self._quiet_ms(live, seconds=0.25)
-                    if quiet is not None and quiet >= 250:
-                        break
             self._pause(min(250.0, max(1.0, (end - time.monotonic()) * 1000)))

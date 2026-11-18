@@ -135,6 +135,36 @@ class HeadlessRunTests(unittest.TestCase):
         self.assertEqual(list(self.temp.glob("ghost-agent-headless-*")), [])
         self.assertEqual(list(logs.glob("bench-server-*.jsonl")), [])  # the site was already running
 
+    def test_run_suite_runs_the_tasks_and_scores_them(self):
+        # tools/bench/run_suite.py ("Run benchmark.cmd"): its own site on a free port, the agent with
+        # every option it does not know, then score.py. Its files go next to the agent's logs.
+        script = [
+            {"tool_calls": [tool("write", element="search box", x=self.q[0], y=self.q[1], text=TYPED)]},
+            {"tool_calls": [tool("click_web", element="Search button", x=self.button[0], y=self.button[1])]},
+            {"tool_calls": [tool("answer", content="The article about the blue heron was written by Marta Okafor.")]},
+        ]
+        fake = helpers.start_fake_llama(self, script=script, validate="strict")
+        override = {"external_server": fake.base, "settle_seconds": 0.2}
+        env = dict(os.environ, TEMP=str(self.temp), TMP=str(self.temp))
+        r = helpers.run_python([helpers.BENCH / "run_suite.py", "--port", "0", "--tasks", "search-submit",
+                                "--label", "t", "--headless-browser", "--data-dir", self.d,
+                                "--settings-override", json.dumps(override)], timeout=180, env=env)
+        out = r.stdout + r.stderr
+        self.assertEqual(r.returncode, 0, out)
+        logs = self.d / "logs"
+        scores = list(logs.glob("bench-*-t-score.json"))
+        self.assertEqual(len(scores), 1, out)
+        summary = json.loads(scores[0].read_text(encoding="utf-8"))
+        self.assertEqual((summary["runs"], summary["successes"]), (1, 1), out)
+        self.assertEqual(summary["step_times_from"], "trace")
+        self.assertIn("success 1/1", out)
+        self.assertEqual(len(read_jsonl(next(logs.glob("bench-*-t-results.jsonl")))), 1)
+
+    def test_run_suite_refuses_an_unknown_task(self):
+        r = helpers.run_python([helpers.BENCH / "run_suite.py", "--tasks", "no-such-task"], timeout=60)
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("unknown task(s): no-such-task", r.stderr)
+
     def test_the_benchmark_site_is_started_when_the_tasks_need_it(self):
         port = helpers.free_port()
         tasks = [t for t in helpers.suite_tasks(port) if t["name"] in ("search-submit", "copy-code")]
@@ -257,7 +287,7 @@ class HeadlessBrowserTests(unittest.TestCase):
             b.close()
 
     def test_action_timings_and_a_fresh_start_per_task(self):
-        b = self.start(settle_seconds=0.3)
+        b = self.start(settle_seconds=0.3, settle_mode="fixed")  # the whole settle_seconds after an action
         b.execute("switch_tab_web", {"new_tab_url": self.site.url("/search/index.html")})
         self.assertGreaterEqual(b.last_timings["settle"], 0.3)
         self.assertGreaterEqual(b.last_timings["execute"], 0)

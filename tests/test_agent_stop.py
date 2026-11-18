@@ -228,6 +228,7 @@ class BrowserStopTests(unittest.TestCase):
     def setUp(self):
         reset_stop(self)
         scratch_paths(self)
+        # wait_web waits as long as asked unless stopped, which both tests here rely on.
         self.browser = AGENT.Browser(settings(settle_seconds=0.2), headless=True)
         self.addCleanup(self.browser.close)
         with quiet():

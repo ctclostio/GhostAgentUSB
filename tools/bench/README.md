@@ -11,6 +11,7 @@ a model file.
 | `site\` | The 12 benchmark task pages, plus `site\fixtures\` (small pages for unit tests: dialogs, scheme links, popups, downloads, a busy page, and so on; see `/fixtures/`). |
 | `suite.json` | The 12 tasks: `name`, `task` (what a user would type), `start_url`, `page` and a deterministic `check`. |
 | `score.py` | Scores a run from the agent's headless results plus the bench server log. |
+| `run_suite.py` | One command for a whole suite run: serves the site, runs the agent over the tasks, then scores the run. `Run benchmark.cmd` at the repo root calls it. |
 | `replay.py` | Replays recorded request bodies against a llama-server to measure prompt and generation cost. |
 
 The unit tests for all of this are in `tests\` at the repo root:
@@ -18,6 +19,18 @@ The unit tests for all of this are in `tests\` at the repo root:
     GhostAgent\python\python.exe -I tests\run_tests.py
 
 ## A suite run
+
+The short way, from the repo root (or double-click `Run benchmark.cmd`):
+
+    GhostAgent\python\python.exe -I tools\bench\run_suite.py [--tasks a,b] [--label NAME] [agent options]
+
+It serves the site on 127.0.0.1:8765 (`--port 0` picks a free port), runs the tasks in one agent
+session with the bundled browser, and prints `score.py`'s table. Any option it does not know goes to
+the agent, for example `--settings-override try.json`, `--browser edge` or
+`--emulate-free-vram-mib 7070`. Its files go to `GhostAgent\logs\bench-<time>[-NAME]-*`: the tasks,
+the agent's results, the site's log and the score as JSON.
+
+The same steps by hand:
 
 1. Start the site: `python\python.exe -I tools\bench\bench_server.py --log logs\bench-server.jsonl`
    (use a new log file for every suite run; without `--log`, each server start gets its own

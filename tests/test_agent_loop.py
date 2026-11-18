@@ -157,7 +157,8 @@ class MultiCallTests(unittest.TestCase):
         script = [{"tool_calls": [call("click_web", element="Next", x=1, y=2),
                                   call("write", element="box", x=3, y=4, text="hi")]},
                   {"tool_calls": [call("answer", content="Carried on.")]}]
-        agent, fake, folder = make_agent(self, script, browser=browser)
+        # The classic prompt: its follow-up message is the user's words alone (h adds the time of day).
+        agent, fake, folder = make_agent(self, script, browser=browser, prompt_version="classic")
         with self.assertRaises(AGENT.StepCancelled):
             run(agent, "first task")
         self.assertEqual(agent.last["outcome"], "cancelled")
@@ -173,7 +174,8 @@ class MultiCallTests(unittest.TestCase):
 
 
 class ConversationTests(unittest.TestCase):
-    """CS-18: follow-ups, /new, a fresh start after an error, and reset() for unattended runs."""
+    """CS-18: follow-ups, /new, a fresh start after an error, and reset() for unattended runs. With the
+    classic prompt, whose task messages are the exact text checked here (h adds the time of day)."""
 
     def setUp(self):
         reset_stop(self)
@@ -181,7 +183,7 @@ class ConversationTests(unittest.TestCase):
     def test_a_follow_up_continues_the_conversation(self):
         script = [{"tool_calls": [call("answer", content="Found 3 flights. Shall I book the cheapest?")]},
                   {"tool_calls": [call("answer", content="Booked.")]}]
-        agent, fake, folder = make_agent(self, script)
+        agent, fake, folder = make_agent(self, script, prompt_version="classic")
         run(agent, "find flights to Boston")
         self.assertEqual(run(agent, "yes, book it"), "Booked.")
         first, second = [r["body"]["messages"] for r in fake.chat_requests()]
@@ -197,7 +199,7 @@ class ConversationTests(unittest.TestCase):
         script = [{"tool_calls": [call("answer", content="It is 21 degrees.")]},
                   {"tool_calls": [call("answer", content="Second.")]},
                   {"tool_calls": [call("answer", content="Third.")]}]
-        agent, fake, folder = make_agent(self, script)
+        agent, fake, folder = make_agent(self, script, prompt_version="classic")
         run(agent, "weather in Denver")
         agent.new_conversation()
         run(agent, "and in Boston?")
@@ -212,14 +214,14 @@ class ConversationTests(unittest.TestCase):
         assert_requests_valid(self, fake)
 
     def test_new_without_earlier_tasks_has_no_summary(self):
-        agent, fake, folder = make_agent(self, [{"tool_calls": [call("answer", content="ok")]}])
+        agent, fake, folder = make_agent(self, [{"tool_calls": [call("answer", content="ok")]}], prompt_version="classic")
         agent.new_conversation()
         run(agent, "only task")
         self.assertEqual(fake.chat_requests()[0]["body"]["messages"][1]["content"], "only task")
 
     def test_an_error_starts_a_new_conversation(self):
         script = [{"content": "hmm"}] * AGENT.MAX_FAILED_REPLIES + [{"tool_calls": [call("answer", content="Fine now.")]}]
-        agent, fake, folder = make_agent(self, script)
+        agent, fake, folder = make_agent(self, script, prompt_version="classic")
         with self.assertRaises(RuntimeError):
             run(agent, "a task that breaks")
         self.assertEqual(agent.messages, [])
@@ -335,8 +337,9 @@ class InteractiveTests(unittest.TestCase):
     def test_paste_new_and_outcome(self):
         script = [{"tool_calls": [call("answer", content="Please sign in first.", outcome="blocked")]},
                   {"tool_calls": [call("answer", content="Hotels found.", outcome="success")]}]
+        # The classic prompt: the task message is the pasted text alone (h adds the time of day).
         code, out, fake = self.run_prompt([("find flights", "from Denver", "to Boston"), "/new", "and hotels", "/quit"],
-                                          script, tool_schema="h")
+                                          script, tool_schema="h", prompt_version="classic")
         self.assertEqual(code, 0)
         self.assertIn("Task received (3 lines)", out)
         self.assertIn("Answer (blocked):", out)
@@ -353,7 +356,7 @@ class InteractiveTests(unittest.TestCase):
     def test_a_follow_up_at_the_prompt(self):
         script = [{"tool_calls": [call("answer", content="Shall I send it?")]},
                   {"tool_calls": [call("answer", content="Sent.")]}]
-        code, out, fake = self.run_prompt(["write the email", "yes, send it", "/quit"], script)
+        code, out, fake = self.run_prompt(["write the email", "yes, send it", "/quit"], script, prompt_version="classic")
         self.assertIn("Answer:", out)
         self.assertNotIn("Answer (", out)
         sent = fake.chat_requests()[1]["body"]["messages"]
@@ -383,13 +386,17 @@ class PreserveReasoningTests(unittest.TestCase):
         assert_requests_valid(self, fake)
 
     def test_off_by_default_on_the_fast_profile(self):
-        agent, fake, folder = make_agent(self, copy.deepcopy(self.SCRIPT))
-        run(agent, "find the price")
-        first, second = [r["body"] for r in fake.chat_requests()]
-        self.assertNotIn("preserve_thinking", second["chat_template_kwargs"])
-        self.assertNotIn("reasoning_content", json.dumps(second["messages"]))
         today = datetime.now().strftime("%A %d %B %Y")
-        self.assertEqual(first["messages"][0]["content"], AGENT.SYSTEM_PROMPT.format(today=today))
+        for over in ({}, {"prompt_version": "classic"}):  # the default (h) prompt, and the classic one
+            agent, fake, folder = make_agent(self, copy.deepcopy(self.SCRIPT), **over)
+            run(agent, "find the price")
+            first, second = [r["body"] for r in fake.chat_requests()]
+            self.assertNotIn("preserve_thinking", second["chat_template_kwargs"])
+            self.assertNotIn("reasoning_content", json.dumps(second["messages"]))
+            prompt = first["messages"][0]["content"]
+            self.assertIn(AGENT.CLASSIC_REASONING_LINE, prompt, over)
+            self.assertNotIn(AGENT.KEPT_REASONING_LINE, prompt, over)
+        self.assertEqual(prompt, AGENT.SYSTEM_PROMPT.format(today=today))  # classic: sent word for word
 
     def test_auto_follows_the_profile(self):
         p = AGENT.preserves_reasoning
@@ -429,12 +436,16 @@ class PromptTests(unittest.TestCase):
 
     def test_classic_prompt_is_unchanged(self):
         today = datetime.now().strftime("%A %d %B %Y")
-        self.assertEqual(AGENT.system_prompt(settings()), AGENT.SYSTEM_PROMPT.format(today=today))
-        self.assertEqual(AGENT.task_message(settings(), "do it"), "do it")
+        classic = settings(prompt_version="classic")
+        self.assertEqual(AGENT.system_prompt(classic), AGENT.SYSTEM_PROMPT.format(today=today))
+        self.assertEqual(AGENT.task_message(classic, "do it"), "do it")
+        # The default is the h prompt, which adds the time of day to each task message.
+        self.assertTrue(AGENT.system_prompt(settings()).startswith("You are GhostAgent"))
+        self.assertTrue(AGENT.task_message(settings(), "do it").startswith("do it\n\n(Local time: "))
 
     def test_h_prompt(self):
         note = "\n- You are working in the user's own Chrome window."
-        text = AGENT.system_prompt(settings(prompt_version="h"), note)
+        text = AGENT.system_prompt(settings(prompt_version="h", tool_schema="classic"), note)
         self.assertTrue(text.startswith("You are GhostAgent"))
         self.assertTrue(text.endswith(note))
         self.assertNotIn("{", text)
@@ -501,9 +512,10 @@ class ToolSchemaTests(unittest.TestCase):
         answer = [t for t in AGENT.TOOLS_H if t["function"]["name"] == "answer"][0]["function"]["parameters"]
         self.assertEqual(answer["properties"]["outcome"]["enum"], ["success", "partial", "infeasible", "blocked"])
         self.assertEqual(answer["required"], ["content"])
-        self.assertIs(AGENT.tool_list(settings()), AGENT.TOOLS)  # the default: today's tools, untouched
+        self.assertIs(AGENT.tool_list(settings(tool_schema="classic")), AGENT.TOOLS)  # the original tools, untouched
+        self.assertEqual(AGENT.tool_list(settings()), AGENT.TOOLS_H)  # the default: the h tools
         before = json.dumps(AGENT.TOOLS)
-        tools = AGENT.tool_list(settings(write_enter_default=True))
+        tools = AGENT.tool_list(settings(tool_schema="classic", write_enter_default=True))
         write = [t for t in tools if t["function"]["name"] == "write"][0]["function"]["parameters"]["properties"]
         self.assertIn("default true", write["press_enter"]["description"])
         self.assertEqual(json.dumps(AGENT.TOOLS), before)

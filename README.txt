@@ -153,8 +153,8 @@ MODEL PROFILES
             "medium" or "low" makes it faster, at some cost in care.
   To use another profile: run   "Build GhostAgent.cmd" -Profile accurate   (or fast-q8,
   or all) to download it, then put "model_profile": "accurate" in settings.json.
-  The default stays fast until benchmarks have measured each profile's success and time
-  per task on a laptop.
+  The default is fast. The other two profiles have not been benchmarked; "Run
+  benchmark.cmd" measures them on this PC (see SETTINGS).
 
 SETTINGS
   GhostAgent\settings.default.json lists every setting with its default value and a
@@ -187,25 +187,27 @@ SETTINGS
     allow_file_urls, allow_internal_pages, allow_unsandboxed_browser   (all false)
     downloads, download_max_mb, profile_on_stick
 
-  Settings that wait for a benchmark. These change what the model sees or how it acts.
-  They are fully built, but each keeps the behaviour from before 0.2.0 until a benchmark
-  shows the new one costs no accuracy:
-    image_eviction      "rolling" (default) or "block": block is much faster per step,
-                        but the model sometimes sees 1 or 2 earlier screenshots instead
-                        of 3 (image_keep_after_evict says how many stay)
-    observation_format  "classic" (default) or "header": page title, size and scroll
-                        position around each screenshot
-    prompt_version      "classic" (default) or "h": longer instructions along H
-                        Company's published guidance
-    tool_schema         "classic" (default) or "h": H Company's tool names and arguments,
+  Settings chosen by benchmark (12 local tasks on a GPU held to 8 GB, November 2026):
+    image_eviction      "block" (default) or "rolling": block lets the model server reuse
+                        its work, so steps are faster (reading the prompt took 2.8 s per
+                        step instead of 5.4 s); the model sees 1 to 3 earlier screenshots
+                        instead of 3 (image_keep_after_evict, default 1, says how many stay)
+    prompt_version      "h" (default) or "classic": instructions along H Company's
+                        published guidance
+    tool_schema         "h" (default) or "classic": H Company's tool names and arguments,
                         a drag-and-drop tool and an outcome with each answer
+    settle_mode         "adaptive" (default) or "fixed": waits after an action only until
+                        the page is quiet; a page may be captured half-drawn
+    observation_format  "classic" (default) or "header": page title, size and scroll
+                        position around each screenshot (measured slower, so off)
+    preserve_reasoning  "auto" (default: on for accurate, off for fast), true or false
+    snap_viewport       false (default) or true: screenshots sized so the model server
+                        does not resample them (measured no faster, so off)
     write_enter_default false (default) or true: Enter after typing unless told not to
                         (a message could be sent by mistake; the Send question guards it)
-    preserve_reasoning  "auto" (default: on for accurate, off for fast), true or false
-    settle_mode         "fixed" (default) or "adaptive": shorter waits after actions; a
-                        page may be captured half-drawn
-    snap_viewport       false (default) or true: screenshots sized so the model server
-                        does not resample them (1280x800 becomes 1280x832)
+  "Run benchmark.cmd" runs the same 12 tasks on this PC with the bundled browser and
+  prints the successes and the time per step. Add --settings-override try.json (a file
+  shaped like settings.json) to try other settings or a model profile.
   Tuning settings for the model server (ctx_checkpoints, checkpoint_min_step,
   cache_ram_mib, moe_cache_mib, moe_cache_cap_mib, threads and others) are explained in
   their notes and in DECISIONS.md. Leave them alone unless you are benchmarking.
@@ -336,6 +338,7 @@ FOLDERS
   Start GhostAgent.cmd     starts the agent
   Build GhostAgent.cmd     downloads or repairs everything below (safe to run again)
   Update GhostAgent.cmd    gets the newest version, then runs the build
+  Run benchmark.cmd        runs the local benchmark tasks and prints the score
   GhostAgent\agent         the agent (ghost_agent.py starts the modules in its
                            ghostagent folder)
   GhostAgent\bin           llama.cpp builds (cuda13, cuda12, vulkan, cpu; no cuda12 on ARM64)

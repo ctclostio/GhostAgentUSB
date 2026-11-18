@@ -227,6 +227,19 @@ class SettingsFilesTests(SettingsCase):
         notes = {k[1:] for k in doc if k.startswith("_") and k != "_note"}
         self.assertEqual(notes - set(values), set(), "notes for settings that do not exist")
 
+    def test_the_benchmarked_defaults(self):
+        # Chosen on the local benchmark (tools\bench): the h prompt and tools, block eviction keeping
+        # one screenshot, adaptive settle. The shipped settings.default.json says the same.
+        chosen = {"prompt_version": "h", "tool_schema": "h", "image_eviction": "block",
+                  "image_keep_after_evict": 1, "settle_mode": "adaptive"}
+        shipped = json.loads((helpers.REPO / "GhostAgent" / "settings.default.json").read_text(encoding="utf-8"))
+        for key, value in chosen.items():
+            self.assertEqual(AGENT.DEFAULT_SETTINGS[key], value, key)
+            self.assertEqual(shipped[key], AGENT.DEFAULT_SETTINGS[key], key)
+        s, out = self.load()
+        self.assertEqual({k: s[k] for k in chosen}, chosen)
+        self.assertEqual(out.strip(), "")  # keep 1 fits the default image_budget: no warning
+
     def test_defaults_file_is_tracked_and_settings_json_is_not(self):
         ignore = (helpers.REPO / ".gitignore").read_text(encoding="utf-8").splitlines()
         self.assertIn("/GhostAgent/settings.json", ignore)
