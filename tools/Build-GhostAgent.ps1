@@ -859,10 +859,20 @@ function Copy-UpdateFiles([string]$Src, [string]$Settings) {
     Note "copying the new files from $srcFull"
     Get-ChildItem -LiteralPath $srcFull -Recurse -File -ErrorAction SilentlyContinue | Unblock-File -ErrorAction SilentlyContinue
     # Never overwritten: the user's settings, the browser profiles (sign-ins), downloads and logs.
-    # Nothing is deleted either (no /PURGE), so model files and downloaded parts stay.
+    # Nothing is deleted either (no /PURGE), so model files and downloaded parts stay; only the agent's
+    # own package is mirrored (below).
     & $Robocopy $srcFull $Root /E /IS /IT /R:2 /W:2 /XF settings.json /XD 'browser-profile*' downloads logs .git /NJH /NJS /NDL /NFL /NP | Out-Host
     $rc = $LASTEXITCODE
     if ($rc -ge 8) { throw "Copying the new files failed (robocopy exit code $rc)." }
+    # The agent's package (GhostAgent\agent\ghostagent) is mirrored, so a module the new version no
+    # longer has does not stay behind next to the new ones. An update from a release before the package
+    # has no such folder and leaves it as it is (that release's ghost_agent.py does not use it).
+    $pkg = 'GhostAgent\agent\ghostagent'
+    if (Test-Path -LiteralPath (Join-Path $srcFull $pkg) -PathType Container) {
+        & $Robocopy (Join-Path $srcFull $pkg) (Join-Path $Root $pkg) /MIR /IS /IT /R:2 /W:2 /NJH /NJS /NDL /NFL /NP | Out-Host
+        $rc = $LASTEXITCODE
+        if ($rc -ge 8) { throw "Copying the agent's modules failed (robocopy exit code $rc)." }
+    }
     $newSettings = Join-Path $srcFull 'GhostAgent\settings.json'
     if (-not (Test-Path -LiteralPath $Settings) -and (Test-Path -LiteralPath $newSettings)) {
         Copy-Item -LiteralPath $newSettings -Destination $Settings

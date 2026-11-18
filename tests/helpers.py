@@ -9,13 +9,16 @@ Importing this module also isolates the test process from the user's own machine
   * NO_PROXY covers 127.0.0.1 and localhost (a test of proxy handling must clear it itself).
 """
 
+import ast
 import atexit
 import base64
 import contextlib
 import http.client
+import importlib
 import inspect
 import json
 import os
+import pkgutil
 import shutil
 import socket
 import struct
@@ -30,6 +33,7 @@ from pathlib import Path
 TESTS = Path(__file__).resolve().parent
 REPO = TESTS.parent
 AGENT_DIR = REPO / "GhostAgent" / "agent"
+AGENT_PACKAGE = AGENT_DIR / "ghostagent"
 BENCH = REPO / "tools" / "bench"
 SITE = BENCH / "site"
 SUITE = BENCH / "suite.json"
@@ -99,15 +103,92 @@ def free_port():
 # The agent module and the fake servers
 # --------------------------------------------------------------------------------------------
 
+_MISSING = object()
+
+
+class AgentView:
+    """The agent's package (GhostAgent\\agent\\ghostagent) read as the one module it used to be:
+    AGENT.name is that name in the module that defines it, read at the moment of access (so a name
+    the agent changes while it runs, such as LOGS or HEADLESS, is always current), and AGENT.os,
+    AGENT.subprocess and so on are the modules the agent imports. It is read-only: a test replaces a
+    name with agent_support.patch_agent, which reaches every module that looks the name up."""
+
+    def __init__(self, modules):
+        owners = {}
+        for mod in modules.values():
+            tree = ast.parse(Path(mod.__file__).read_text(encoding="utf-8"))
+            for node in tree.body:
+                names = []
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                    names = [node.name]
+                elif isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign)):
+                    targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+                    names = [n.id for t in targets for n in ast.walk(t) if isinstance(n, ast.Name)]
+                for name in names:
+                    assert owners.get(name, mod) is mod, f"{name} is defined in {owners[name].__name__} and {mod.__name__}"
+                    owners[name] = mod
+        object.__setattr__(self, "_modules", modules)
+        object.__setattr__(self, "_owners", owners)
+
+    def _owner(self, name):
+        """The module that defines `name`, or None for a module the agent imports (os, time ...)."""
+        return self._owners.get(name)
+
+    def _lookup_sites(self, name):
+        """Every module of the agent that looks `name` up: the one that defines it and each one that
+        imported it by name (bound to the same object), or each one that imports a module of that name."""
+        owner = self._owner(name)
+        if owner is not None:
+            value = getattr(owner, name)
+        else:
+            value = next((vars(m)[name] for m in self._modules.values() if name in vars(m)), _MISSING)
+            if value is _MISSING:
+                raise AttributeError(f"no module of the agent defines or imports {name!r}")
+        return [m for m in self._modules.values() if vars(m).get(name, _MISSING) is value]
+
+    def __getattr__(self, name):
+        if name.startswith("__"):
+            raise AttributeError(name)
+        owner = self._owner(name)
+        if owner is not None:
+            return getattr(owner, name)
+        sites = self._lookup_sites(name)
+        return getattr(sites[0], name)
+
+    def __setattr__(self, name, value):
+        raise AttributeError(f"AGENT is read-only; replace {name} with agent_support.patch_agent or set_agent")
+
+    def __delattr__(self, name):
+        raise AttributeError(f"AGENT is read-only; it cannot delete {name}")
+
+
+_AGENT_VIEW = None
+
+
+def agent_modules():
+    """{name: module} for every module of the agent's package (GhostAgent\\agent\\ghostagent)."""
+    import ghostagent
+    assert Path(ghostagent.__file__).resolve().parent == AGENT_PACKAGE.resolve(), ghostagent.__file__
+    return {info.name: importlib.import_module("ghostagent." + info.name)
+            for info in pkgutil.iter_modules([str(AGENT_PACKAGE)])}
+
+
 def import_agent():
-    """The repo's ghost_agent module (GhostAgent\\agent\\ghost_agent.py)."""
-    import ghost_agent
-    assert Path(ghost_agent.__file__).resolve() == (AGENT_DIR / "ghost_agent.py").resolve(), ghost_agent.__file__
-    return ghost_agent
+    """The repo's agent (the ghostagent package next to GhostAgent\\agent\\ghost_agent.py), as one
+    read-only view (see AgentView)."""
+    global _AGENT_VIEW
+    if _AGENT_VIEW is None:
+        _AGENT_VIEW = AgentView(agent_modules())
+    return _AGENT_VIEW
+
+
+def agent_sources():
+    """The agent's source files: the entry script and every module of its package."""
+    return [AGENT_DIR / "ghost_agent.py"] + sorted(AGENT_PACKAGE.glob("*.py"))
 
 
 def call_stream_chat(base, body, on_event=None, api_key=None):
-    """ghost_agent.stream_chat, passing an API key only if the function takes one."""
+    """The agent's stream_chat, passing an API key only if the function takes one."""
     agent = import_agent()
     on_event = on_event or (lambda kind, value: None)
     params = inspect.signature(agent.stream_chat).parameters

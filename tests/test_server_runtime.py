@@ -17,7 +17,7 @@ import unittest.mock as mock
 from pathlib import Path
 
 import helpers
-from agent_support import AGENT, StubBrowser, call, quiet, scratch_paths, settings
+from agent_support import AGENT, StubBrowser, call, patch_agent, quiet, scratch_paths, set_agent, settings
 
 REAL_POPEN = subprocess.Popen
 CPU_EXE = AGENT.BIN / "cpu" / "llama-server.exe"
@@ -141,7 +141,7 @@ class GgufTests(unittest.TestCase):
         first = AGENT.model_layout(path)
         kept = self.folder / "m.gguf.layout.json"
         self.assertTrue(kept.is_file())
-        with mock.patch.object(AGENT, "gguf_layout", side_effect=AssertionError("read again")):
+        with patch_agent("gguf_layout", side_effect=AssertionError("read again")):
             self.assertEqual(AGENT.model_layout(path), first)
         write_gguf(path, dict(TEST_META, **{"testmoe.attention.head_count_kv": 1}), TEST_TENSORS)
         os.utime(path, ns=(time.time_ns(), time.time_ns() + 5_000_000_000))
@@ -271,13 +271,13 @@ class ServerArgsTests(unittest.TestCase):
         launched = []
         server = server or AGENT.LlamaServer(s)
         files = files or [Path("m.gguf"), Path("p.gguf")]
-        with mock.patch.object(AGENT, "pick_backend", return_value=(backend, exe, device)), \
-                mock.patch.object(AGENT, "model_files", return_value=files), \
-                mock.patch.object(AGENT, "server_flags", return_value=supported), \
-                mock.patch.object(AGENT, "model_layout", return_value=layout), \
+        with patch_agent("pick_backend", return_value=(backend, exe, device)), \
+                patch_agent("model_files", return_value=files), \
+                patch_agent("server_flags", return_value=supported), \
+                patch_agent("model_layout", return_value=layout), \
                 mock.patch.object(AGENT.subprocess, "Popen", lambda args, **kw: launched.append((args, kw)) or Proc()), \
-                mock.patch.object(AGENT, "port_is_free", return_value=True), \
-                mock.patch.object(AGENT, "port_bindable", return_value=True), quiet() as out:
+                patch_agent("port_is_free", return_value=True), \
+                patch_agent("port_bindable", return_value=True), quiet() as out:
             server.start()
         args, kw = launched[-1]
         return args, kw, server, out.getvalue()
@@ -359,10 +359,10 @@ class ServerArgsTests(unittest.TestCase):
         self.assertNotIn("--device", args)
 
     def test_threads_follow_the_performance_cores(self):
-        with mock.patch.object(AGENT, "performance_cores", return_value=6):
+        with patch_agent("performance_cores", return_value=6):
             args, *_ = self.start(settings())
         self.assertEqual(self.value(args, "-t"), "6")
-        with mock.patch.object(AGENT, "performance_cores", return_value=None), \
+        with patch_agent("performance_cores", return_value=None), \
                 mock.patch.object(AGENT.os, "cpu_count", return_value=4):
             args, *_ = self.start(settings())
         self.assertEqual(self.value(args, "-t"), "4")
@@ -370,7 +370,7 @@ class ServerArgsTests(unittest.TestCase):
         self.assertEqual(self.value(args, "-t"), "3")
 
     def test_graceful_stop_shares_the_console_and_sends_ctrl_break(self):
-        with mock.patch.object(AGENT, "has_console", return_value=True):
+        with patch_agent("has_console", return_value=True):
             args, kw, server, out = self.start(settings(graceful_server_stop=True))
         self.assertEqual(kw["creationflags"] & helpers.CREATE_NO_WINDOW, 0)
         self.assertTrue(kw["creationflags"] & AGENT.CREATE_NEW_PROCESS_GROUP)
@@ -380,7 +380,7 @@ class ServerArgsTests(unittest.TestCase):
         self.assertEqual(sent, [(server.proc.pid, AGENT.signal.CTRL_BREAK_EVENT)])
         self.assertEqual(server.proc.terminated, 0)  # it stopped by itself
         # Without a console of its own a child would open a window: then it is started as before.
-        with mock.patch.object(AGENT, "has_console", return_value=False):
+        with patch_agent("has_console", return_value=False):
             args, kw, server, out = self.start(settings(graceful_server_stop=True))
         self.assertTrue(kw["creationflags"] & helpers.CREATE_NO_WINDOW)
 
@@ -393,10 +393,10 @@ class ServerArgsTests(unittest.TestCase):
         exe = folder / "bin" / "cuda13" / "llama-server.exe"
         exe.parent.mkdir(parents=True)
         server = AGENT.LlamaServer(settings())
-        with mock.patch.object(AGENT, "pick_backend", return_value=("cuda13", exe, DEVICE)), \
-                mock.patch.object(AGENT, "model_files", return_value=[Path("m.gguf"), Path("p.gguf")]), \
+        with patch_agent("pick_backend", return_value=("cuda13", exe, DEVICE)), \
+                patch_agent("model_files", return_value=[Path("m.gguf"), Path("p.gguf")]), \
                 mock.patch.object(AGENT.subprocess, "Popen", side_effect=os_error(4551)), \
-                mock.patch.object(AGENT, "port_is_free", return_value=True), quiet(), \
+                patch_agent("port_is_free", return_value=True), quiet(), \
                 self.assertRaises(SystemExit) as cm:
             server.start()
         self.assertIn("App Control", str(cm.exception))
@@ -413,16 +413,16 @@ class ServerArgsTests(unittest.TestCase):
         exe = folder / "bin" / "cpu" / "llama-server.exe"
         exe.parent.mkdir(parents=True)
         server = AGENT.LlamaServer(settings(port=port))
-        with mock.patch.object(AGENT, "pick_backend", return_value=("cpu", exe, None)), \
-                mock.patch.object(AGENT, "model_files", return_value=[Path("m.gguf"), Path("p.gguf")]), \
-                mock.patch.object(AGENT, "port_is_free", return_value=True), \
+        with patch_agent("pick_backend", return_value=("cpu", exe, None)), \
+                patch_agent("model_files", return_value=[Path("m.gguf"), Path("p.gguf")]), \
+                patch_agent("port_is_free", return_value=True), \
                 mock.patch.object(AGENT.subprocess, "Popen", lambda args, **kw: Proc()), quiet():
             server.start()
         self.assertNotEqual(server.port, port)
         server = AGENT.LlamaServer(settings(port=port))
-        with mock.patch.object(AGENT, "pick_backend", return_value=("cpu", exe, None)), \
-                mock.patch.object(AGENT, "model_files", return_value=[Path("m.gguf"), Path("p.gguf")]), \
-                mock.patch.object(AGENT, "port_bindable", return_value=False), quiet(), \
+        with patch_agent("pick_backend", return_value=("cpu", exe, None)), \
+                patch_agent("model_files", return_value=[Path("m.gguf"), Path("p.gguf")]), \
+                patch_agent("port_bindable", return_value=False), quiet(), \
                 self.assertRaises(SystemExit) as cm:
             server.start()
         self.assertIn("No port between", str(cm.exception))
@@ -446,9 +446,9 @@ class ServerArgsTests(unittest.TestCase):
         exe.parent.mkdir(parents=True)
         server = AGENT.LlamaServer(settings(port=busy))
         t0 = time.monotonic()
-        with mock.patch.object(AGENT, "pick_backend", return_value=("cpu", exe, None)), \
-                mock.patch.object(AGENT, "model_files", return_value=[Path("m.gguf"), Path("p.gguf")]), \
-                mock.patch.object(AGENT, "server_flags", return_value=None), \
+        with patch_agent("pick_backend", return_value=("cpu", exe, None)), \
+                patch_agent("model_files", return_value=[Path("m.gguf"), Path("p.gguf")]), \
+                patch_agent("server_flags", return_value=None), \
                 mock.patch.object(AGENT.subprocess, "Popen", lambda args, **kw: Proc()), quiet():
             server.start()
         self.assertNotEqual(server.port, busy)
@@ -544,7 +544,7 @@ class BackendTests(unittest.TestCase):
         for name in AGENT.BACKENDS:
             (bin_dir / name).mkdir(parents=True)
             (bin_dir / name / "llama-server.exe").write_bytes(b"MZ")
-        patcher = mock.patch.object(AGENT, "BIN", bin_dir)
+        patcher = patch_agent("BIN", bin_dir)
         patcher.start()
         self.addCleanup(patcher.stop)
         self.seen = {"cuda13": [DEVICE], "cuda12": [DEVICE], "vulkan": [dict(DEVICE, id="Vulkan0")]}
@@ -553,7 +553,7 @@ class BackendTests(unittest.TestCase):
         self.nvidia = True
         for name, value in (("list_devices", self.list_devices), ("nvidia_smi_gpus", lambda: self.gpus),
                             ("nvidia_gpu_present", lambda: self.nvidia)):
-            patcher = mock.patch.object(AGENT, name, value)
+            patcher = patch_agent(name, value)
             patcher.start()
             self.addCleanup(patcher.stop)
 
@@ -699,8 +699,8 @@ class StartAndRestartTests(unittest.TestCase):
         dev = dict(DEVICE)
         server = AGENT.LlamaServer(settings())
         picks = {None: ("cuda13", Path("13"), dev), "cuda13": ("cuda12", Path("12"), dev)}
-        with mock.patch.object(AGENT, "pick_backend", lambda s, after=None: picks[after]), \
-                mock.patch.object(AGENT, "nvidia_smi_gpus", return_value=[]), quiet():
+        with patch_agent("pick_backend", lambda s, after=None: picks[after]), \
+                patch_agent("nvidia_smi_gpus", return_value=[]), quiet():
             server.prepare(interactive=False)
             self.assertTrue(server.can_fall_back())
             self.assertEqual(server.next_backend(), "cuda12")
@@ -714,8 +714,8 @@ class StartAndRestartTests(unittest.TestCase):
         server = AGENT.LlamaServer(settings())
         picks = {None: ("cuda13", Path("13"), dev), "cuda13": ("cuda12", Path("12"), dev),
                  "cuda12": ("cpu", Path("cpu"), None)}
-        with mock.patch.object(AGENT, "pick_backend", lambda s, after=None: picks[after]), \
-                mock.patch.object(AGENT, "nvidia_smi_gpus", return_value=[]), quiet():
+        with patch_agent("pick_backend", lambda s, after=None: picks[after]), \
+                patch_agent("nvidia_smi_gpus", return_value=[]), quiet():
             server.prepare(interactive=False)
             server.next_backend()
             self.assertEqual(server.next_backend(), "cpu")
@@ -738,7 +738,7 @@ class StartAndRestartTests(unittest.TestCase):
 
         for name, value in (("pick_backend", lambda s, after=None: ("cpu", exe, None)),
                             ("model_files", lambda s, **kw: [Path("m.gguf"), Path("p.gguf")])):
-            patcher = mock.patch.object(AGENT, name, value)
+            patcher = patch_agent(name, value)
             patcher.start()
             self.addCleanup(patcher.stop)
         patcher = mock.patch.object(AGENT.subprocess, "Popen", popen)
@@ -822,7 +822,7 @@ class StartAndRestartTests(unittest.TestCase):
             return value() if callable(value) else value
 
         with quiet() as out, mock.patch("builtins.input", fake_input), \
-                mock.patch.object(AGENT, "copy_to_clipboard", lambda text: copied.append(text) or True):
+                patch_agent("copy_to_clipboard", lambda text: copied.append(text) or True):
             self.assertEqual(AGENT.run_interactive(settings(), server, browser), 0)
         text = out.getvalue()
         self.assertEqual(server.restarted, 1)
@@ -898,10 +898,10 @@ class StallTests(unittest.TestCase):
 
     def test_an_unattended_stall_gives_up(self):
         server = self.waiting_server(True)
-        with mock.patch.object(AGENT, "UNATTENDED_STALL_SECONDS", 1), \
-                mock.patch.object(AGENT, "server_healthy", return_value=False), \
-                mock.patch.object(AGENT, "process_read_bytes", return_value=1000), \
-                mock.patch.object(AGENT, "process_cpu_seconds", return_value=2.0), quiet() as out:
+        with patch_agent("UNATTENDED_STALL_SECONDS", 1), \
+                patch_agent("server_healthy", return_value=False), \
+                patch_agent("process_read_bytes", return_value=1000), \
+                patch_agent("process_cpu_seconds", return_value=2.0), quiet() as out:
             self.assertIsNone(server.wait_ready())
         self.assertTrue(server.quit_requested)
         self.assertEqual(server.proc.terminated, 1)
@@ -918,35 +918,35 @@ class StallTests(unittest.TestCase):
             server.proc = Proc()
             healthy.append(True)  # the new start comes up
 
-        with mock.patch.object(AGENT, "STALL_SECONDS", 1), \
+        with patch_agent("STALL_SECONDS", 1), \
                 mock.patch.object(server, "_can_ask", return_value=True), \
                 mock.patch.object(server, "start", start), \
-                mock.patch.object(AGENT, "ask_console", return_value=("r", "answered")), \
-                mock.patch.object(AGENT, "server_healthy", lambda base: bool(healthy)), \
-                mock.patch.object(AGENT, "process_read_bytes", return_value=None), \
-                mock.patch.object(AGENT, "process_cpu_seconds", return_value=None), quiet():
+                patch_agent("ask_console", return_value=("r", "answered")), \
+                patch_agent("server_healthy", lambda base: bool(healthy)), \
+                patch_agent("process_read_bytes", return_value=None), \
+                patch_agent("process_cpu_seconds", return_value=None), quiet():
             self.assertIsNotNone(server.wait_ready())
         self.assertEqual(starts, [False])
         # A start that llama.cpp laid out itself (the auto-fit retry) is restarted the same way.
         server = self.waiting_server(False)
         server._auto_fit = True
         healthy.clear()
-        with mock.patch.object(AGENT, "STALL_SECONDS", 1), \
+        with patch_agent("STALL_SECONDS", 1), \
                 mock.patch.object(server, "_can_ask", return_value=True), \
                 mock.patch.object(server, "start", start), \
-                mock.patch.object(AGENT, "ask_console", return_value=("r", "answered")), \
-                mock.patch.object(AGENT, "server_healthy", lambda base: bool(healthy)), \
-                mock.patch.object(AGENT, "process_read_bytes", return_value=None), \
-                mock.patch.object(AGENT, "process_cpu_seconds", return_value=None), quiet():
+                patch_agent("ask_console", return_value=("r", "answered")), \
+                patch_agent("server_healthy", lambda base: bool(healthy)), \
+                patch_agent("process_read_bytes", return_value=None), \
+                patch_agent("process_cpu_seconds", return_value=None), quiet():
             self.assertIsNotNone(server.wait_ready())
         self.assertEqual(starts, [False, True])
         server = self.waiting_server(False)
-        with mock.patch.object(AGENT, "STALL_SECONDS", 1), \
+        with patch_agent("STALL_SECONDS", 1), \
                 mock.patch.object(server, "_can_ask", return_value=True), \
-                mock.patch.object(AGENT, "ask_console", return_value=("q", "answered")), \
-                mock.patch.object(AGENT, "server_healthy", return_value=False), \
-                mock.patch.object(AGENT, "process_read_bytes", return_value=None), \
-                mock.patch.object(AGENT, "process_cpu_seconds", return_value=None), quiet():
+                patch_agent("ask_console", return_value=("q", "answered")), \
+                patch_agent("server_healthy", return_value=False), \
+                patch_agent("process_read_bytes", return_value=None), \
+                patch_agent("process_cpu_seconds", return_value=None), quiet():
             self.assertIsNone(server.wait_ready())
         self.assertTrue(server.quit_requested)
 
@@ -983,7 +983,7 @@ class WindowsHelperTests(unittest.TestCase):
         self.assertEqual(AGENT.p_cores_from(mixed), 1)
         p = AGENT.performance_cores()
         self.assertTrue(p is None or 1 <= p <= os.cpu_count())
-        with mock.patch.object(AGENT, "performance_cores", return_value=16):
+        with patch_agent("performance_cores", return_value=16):
             self.assertEqual(AGENT.default_threads(), 8)
 
     def test_keep_pc_awake(self):
@@ -1029,7 +1029,7 @@ class WindowsHelperTests(unittest.TestCase):
         class Windll:
             kernel32 = K32
 
-        self.addCleanup(setattr, AGENT, "_SAVED_CONSOLE_MODE", None)
+        self.addCleanup(set_agent, "_SAVED_CONSOLE_MODE", None)
         with mock.patch.object(AGENT.ctypes, "windll", Windll):
             self.assertTrue(AGENT.disable_quick_edit())
             self.assertEqual(set_modes, [0x01F7 & ~0x40 | 0x80])
@@ -1040,8 +1040,8 @@ class WindowsHelperTests(unittest.TestCase):
             self.assertEqual(len(set_modes), 2)
 
     def test_run_main_puts_the_console_mode_back(self):
-        with mock.patch.object(AGENT, "main", side_effect=SystemExit(0)), mock.patch.object(AGENT, "HEADLESS", False), \
-                mock.patch.object(AGENT, "restore_quick_edit") as restore:
+        with patch_agent("main", side_effect=SystemExit(0)), patch_agent("HEADLESS", False), \
+                patch_agent("restore_quick_edit") as restore:
             self.assertEqual(AGENT.run_main(["--task", "x"]), 0)
         restore.assert_called_once()
 

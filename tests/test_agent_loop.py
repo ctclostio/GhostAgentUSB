@@ -17,7 +17,7 @@ from datetime import datetime, timedelta
 import helpers
 import test_server_runtime as server_runtime  # (the module only: its tests are not collected twice)
 from agent_support import (AGENT, StubBrowser, StubServer, assert_requests_valid, assert_valid_pairing, call,
-                           make_agent, quiet, read_jsonl, reset_stop, scratch_paths, settings, steps_file)
+                           make_agent, patch_agent, quiet, read_jsonl, reset_stop, scratch_paths, settings, steps_file)
 
 
 def run(agent, task):
@@ -293,7 +293,7 @@ class ReadTaskTests(unittest.TestCase):
         self.assertEqual(len(kb.arrivals), 1)
 
     def test_no_console_means_no_waiting(self):
-        with mock.patch.object(AGENT, "_keyboard", lambda: None):
+        with patch_agent("_keyboard", lambda: None):
             text, reads, clock, kb = self.read("piped task", [(0.0, "more")], keyboard=False)
         self.assertEqual((text, clock.now), ("piped task", 0.0))
 
@@ -328,7 +328,7 @@ class InteractiveTests(unittest.TestCase):
             return queue.pop(0)[0]
 
         with quiet() as out, mock.patch.object(builtins, "input", fake_input), \
-                mock.patch.object(AGENT, "_keyboard", lambda: Keyboard):
+                patch_agent("_keyboard", lambda: Keyboard):
             code = AGENT.run_interactive(settings(**over), AGENT.ExternalServer(fake.base), browser)
         return code, out.getvalue(), fake
 
@@ -399,7 +399,7 @@ class PreserveReasoningTests(unittest.TestCase):
         self.assertTrue(p(settings(model_profile="accurate")))
         self.assertFalse(p(settings(model_profile="accurate", preserve_reasoning=False)))
         self.assertTrue(p(settings(preserve_reasoning=True)))
-        with mock.patch.object(AGENT, "active_profile", return_value=("x", {"arch": "moe", "preserve_reasoning": True})):
+        with patch_agent("active_profile", return_value=("x", {"arch": "moe", "preserve_reasoning": True})):
             self.assertTrue(p(settings()))
 
     def test_setting_values(self):

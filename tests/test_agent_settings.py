@@ -11,7 +11,7 @@ import unittest.mock as mock
 from pathlib import Path
 
 import helpers
-from agent_support import AGENT, quiet, settings
+from agent_support import AGENT, patch_agent, quiet, settings
 
 # The settings.json that shipped before settings.default.json existed (version 0.2), as a user who
 # chose copy_model_to_pc and the bundled browser would have it.
@@ -61,7 +61,7 @@ class SettingsCase(unittest.TestCase):
         self.defaults = self.dir / "settings.default.json"
         shutil.copy(AGENT.DEFAULTS_FILE, self.defaults)
         for name, value in (("SETTINGS_FILE", self.user), ("DEFAULTS_FILE", self.defaults)):
-            p = mock.patch.object(AGENT, name, value)
+            p = patch_agent(name, value)
             p.start()
             self.addCleanup(p.stop)
 
@@ -290,14 +290,14 @@ class SettingsFilesTests(SettingsCase):
         self.assertEqual(json.loads(backups[0].read_text(encoding="utf-8")), doc)
 
     def test_conversion_that_cannot_write_keeps_the_old_file(self):
-        with mock.patch.object(AGENT, "write_user_settings", side_effect=PermissionError("read-only")):
+        with patch_agent("write_user_settings", side_effect=PermissionError("read-only")):
             s, out = self.load(raw=LEGACY_FILE)
         self.assertEqual((s["browser"], s["copy_model_to_pc"]), ("bundled", True))
         self.assertEqual(self.user.read_text(encoding="utf-8"), LEGACY_FILE)
         self.assertIn("used as it is", out)
 
     def test_read_only_folder_needs_no_settings_file(self):
-        with mock.patch.object(AGENT, "write_user_settings", side_effect=PermissionError("read-only")):
+        with patch_agent("write_user_settings", side_effect=PermissionError("read-only")):
             s, out = self.load()
         self.assertEqual(s, settings())
         self.assertEqual(out.strip(), "")
@@ -327,7 +327,7 @@ class PreflightModelTests(unittest.TestCase):
 
     def test_mmproj_and_other_sizes(self):
         pins = {"m.gguf": (100, "fast"), "p.gguf": (50, None)}
-        with mock.patch.object(AGENT, "pinned_files", return_value=pins):
+        with patch_agent("pinned_files", return_value=pins):
             AGENT.check_model_files(self.model_settings(100, 50, ("m.gguf", "p.gguf")))  # sizes match: fine
             with self.assertRaises(SystemExit) as cm:
                 AGENT.check_model_files(self.model_settings(100, 20, ("m.gguf", "p.gguf")))
@@ -361,7 +361,7 @@ GiB = 2**30
 class PreflightRamTests(unittest.TestCase):
     def check(self, total_gib, avail_gib, commit_gib=None, interactive=True, answer=""):
         status = {"total": total_gib * GiB, "avail": avail_gib * GiB, "commit_avail": (commit_gib or avail_gib) * GiB}
-        with quiet() as out, mock.patch.object(AGENT, "memory_status", return_value=status), \
+        with quiet() as out, patch_agent("memory_status", return_value=status), \
                 mock.patch("builtins.input", return_value=answer) as asked:
             try:
                 AGENT.check_ram(settings(), interactive=interactive)
@@ -415,8 +415,8 @@ class ReadOnlyDriveTests(unittest.TestCase):
         with self.assertRaises(OSError):
             (stick / "probe").write_bytes(b"x")
         with helpers.isolated_env() as base:
-            with mock.patch.object(AGENT, "LOGS", stick / "logs"), mock.patch.object(AGENT, "PROFILE", stick / "browser-profile"), \
-                    mock.patch.object(AGENT, "DOWNLOADS", stick / "downloads"):
+            with patch_agent("LOGS", stick / "logs"), patch_agent("PROFILE", stick / "browser-profile"), \
+                    patch_agent("DOWNLOADS", stick / "downloads"):
                 notice = AGENT.ensure_writable_data()
                 local = Path(os.environ["LOCALAPPDATA"]) / "GhostAgent"
                 self.assertIn("cannot be written to", notice)
@@ -430,7 +430,7 @@ class ReadOnlyDriveTests(unittest.TestCase):
 
     def test_writable_drive_stays(self):
         stick = helpers.temp_dir(self, "stick-")
-        with mock.patch.object(AGENT, "LOGS", stick / "logs"):
+        with patch_agent("LOGS", stick / "logs"):
             self.assertIsNone(AGENT.ensure_writable_data())
             self.assertEqual(AGENT.LOGS, stick / "logs")
             self.assertEqual(list((stick / "logs").iterdir()), [])  # the probe file is gone again

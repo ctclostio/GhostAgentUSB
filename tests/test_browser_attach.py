@@ -16,7 +16,7 @@ import unittest.mock as mock
 from pathlib import Path
 
 import helpers
-from agent_support import AGENT, quiet, reset_stop, scratch_paths, settings
+from agent_support import AGENT, patch_agent, quiet, reset_stop, scratch_paths, settings
 
 
 def user_browser(folder, name="Chrome"):
@@ -108,7 +108,7 @@ class UserBrowserTests(unittest.TestCase):
 
     def test_auto_picks_chrome_then_edge_then_bundled(self):
         answers = {}
-        with mock.patch.object(AGENT, "attach_problem",
+        with patch_agent("attach_problem",
                                lambda t: answers[t.name]):
             answers.update(Chrome=(Path("c.exe"), None), Edge=(Path("e.exe"), None))
             self.assertEqual(AGENT.pick_auto_browser(), "chrome")
@@ -135,17 +135,17 @@ class UserBrowserTests(unittest.TestCase):
         return b, launched, out.getvalue()
 
     def test_modes_at_start(self):
-        with mock.patch.object(AGENT, "pick_auto_browser", return_value="bundled"):
+        with patch_agent("pick_auto_browser", return_value="bundled"):
             b, launched, out = self.started("auto")
         self.assertEqual(launched, [("own", "bundled")])
         self.assertIn("browser auto", out)
-        with mock.patch.object(AGENT, "pick_auto_browser", return_value="user_edge"), \
-                mock.patch.object(AGENT, "attach_problem", return_value=(Path("msedge.exe"), None)):
+        with patch_agent("pick_auto_browser", return_value="user_edge"), \
+                patch_agent("attach_problem", return_value=(Path("msedge.exe"), None)):
             b, launched, out = self.started("auto")
         self.assertEqual(launched, [("attach", "user_edge")])
         self.assertTrue(b.attached)
         self.assertIn("everyday Edge", b.prompt_note)
-        with mock.patch.object(AGENT, "attach_problem", return_value=(None, "Google Chrome is not installed on this computer.")):
+        with patch_agent("attach_problem", return_value=(None, "Google Chrome is not installed on this computer.")):
             b, launched, out = self.started("chrome")
         self.assertEqual(launched, [("own", "bundled")])
         self.assertIn("not installed on this computer. Using the browser on this drive instead.", out)
@@ -164,8 +164,8 @@ class UserBrowserTests(unittest.TestCase):
         patches = [mock.patch.object(b.target, "running", return_value=True),
                    mock.patch.object(b.target, "endpoint", lambda: endpoints[0] if len(endpoints) == 1 else endpoints.pop(0)),
                    mock.patch.object(b.target, "start", lambda exe: starts.append(exe)),
-                   mock.patch.object(AGENT, "_keyboard", return_value=Keyboard(keys) if keys is not None else None),
-                   mock.patch.object(AGENT, "lend_clipboard", return_value=None),
+                   patch_agent("_keyboard", return_value=Keyboard(keys) if keys is not None else None),
+                   patch_agent("lend_clipboard", return_value=None),
                    mock.patch.object(AGENT.time, "sleep", lambda s: None)]
         for p in patches:
             p.start()

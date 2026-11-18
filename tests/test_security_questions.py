@@ -6,7 +6,7 @@ import signal
 import unittest
 import unittest.mock as mock
 
-from agent_support import AGENT, StubBrowser, call, make_agent, quiet, reset_stop, scratch_paths
+from agent_support import AGENT, StubBrowser, call, make_agent, patch_agent, quiet, reset_stop, scratch_paths
 from security_support import FakeKeyboard, SiteBrowserCase, ctrl_c, use_keyboard
 
 
@@ -45,14 +45,14 @@ class ConsoleQuestionTests(unittest.TestCase):
 
     def test_no_answer_in_time_is_no(self):
         use_keyboard(self)
-        with quiet() as out, mock.patch.object(AGENT, "ASK_SECONDS", 0.3):
+        with quiet() as out, patch_agent("ASK_SECONDS", 0.3):
             self.assertEqual(AGENT.ask_yes_no("Allow?"), (False, "timeout"))
         self.assertIn("No answer in time", out.getvalue())
 
     def test_nobody_to_ask(self):
-        with mock.patch.object(AGENT, "_keyboard", lambda: None):
+        with patch_agent("_keyboard", lambda: None):
             self.assertEqual(AGENT.ask_yes_no("Allow?"), (False, "unattended"))
-        with mock.patch.object(AGENT, "HEADLESS", True):
+        with patch_agent("HEADLESS", True):
             self.assertIsNone(AGENT._keyboard())
         with mock.patch.object(AGENT.sys, "stdin", None):
             self.assertIsNone(AGENT._keyboard())
@@ -72,7 +72,7 @@ class ConsoleQuestionTests(unittest.TestCase):
         lines = []
         log = mock.Mock(write_line=lines.append)
         use_keyboard(self, "hunter2\r", "visible\r")
-        with quiet(), mock.patch.object(AGENT, "_CONSOLE_LOG", log):
+        with quiet(), patch_agent("_CONSOLE_LOG", log):
             self.assertEqual(AGENT.ask_console("Text to send:", private=True), ("hunter2", "answered"))
             self.assertEqual(AGENT.ask_console("Name:"), ("visible", "answered"))
         text = "\n".join(lines)
@@ -157,7 +157,7 @@ class DialogTests(SiteBrowserCase):
 
     def test_no_answer_in_time_dismisses(self):
         b = self.start("/fixtures/confirm.html", task="Delete all the items.", ask=[])
-        with mock.patch.object(AGENT, "ASK_SECONDS", 0.3):
+        with patch_agent("ASK_SECONDS", 0.3):
             result = self.confirm(b)
         self.assertEqual(b.page.title(), "kept")
         self.assertIn("dismissed: nobody answered in time", result)
@@ -181,7 +181,7 @@ class DialogTests(SiteBrowserCase):
         # Unattended runs dismiss whatever dialog_policy says.
         b.s["dialog_policy"] = "accept"
         b.page.reload()
-        with mock.patch.object(AGENT, "HEADLESS", True):
+        with patch_agent("HEADLESS", True):
             self.confirm(b)
         self.assertEqual(b.page.title(), "kept")
         self.confirm(b)  # the same setting in an interactive run

@@ -1,5 +1,5 @@
 {
-  "_note": "Model profiles. Shared by tools\\Build-GhostAgent.ps1 (what to download and verify) and GhostAgent\\agent\\ghost_agent.py (how to run it). Every file is pinned to a Hugging Face revision and a SHA-256.",
+  "_note": "Model profiles. Shared by tools\\Build-GhostAgent.ps1 (what to download and verify) and the agent in GhostAgent\\agent (how to run it). Every file is pinned to a Hugging Face revision and a SHA-256.",
   "_fields": "For the agent: takes_reasoning_effort = the chat template reads reasoning_effort (sent only then); preserve_reasoning = what the preserve_reasoning setting \"auto\" means for this profile; ram_gb = the free RAM the model needs, for the warning before loading. Without them the agent infers them (dense models take reasoning_effort and keep their reasoning; RAM from the file size).",
   "default": "fast",
   "profiles": {

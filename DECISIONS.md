@@ -159,6 +159,20 @@ The desktop check also ran the 27B through the correctness gate for llama.cpp #3
 | ARM64 parts | Pinned like the rest, but untested: no ARM64 hardware was available. |
 
 
+## Code layout
+
+Up to 0.2.0 the agent was one file, `GhostAgent/agent/ghost_agent.py`, of almost 9,000 lines. It is now the package `GhostAgent/agent/ghostagent/`, split along the old file's section banners, and `ghost_agent.py` only starts it. The split moved code and changed nothing else: every statement is the same apart from imports and the names below that are now read through their module, and `--help`, the exit codes and the output are unchanged.
+
+| Choice | Why |
+|---|---|
+| One module per part, imported bottom up | `runstate`, `console`, `paths`, `browsercache`, `settings`, `preflight`, `winproc`, `backends`, `serverflags`, `gguf`, `modelclient`, `questions`, `modelcopy`, `screenshot`, `llamaserver`, `tools`, `prompts`, `keys`, `pagejs`, `userbrowser`, `guards`, `pagehelpers`, `browser`, `history`, `steptrace`, `agentloop`, `forgetpc`, `cli`. Each imports only modules before it in this list, so there are no import cycles; `ghostagent/__init__.py` says what each one holds. |
+| Names that change at run time are read through their module | `runstate.HEADLESS`, `console.PLAIN_OUTPUT`, `paths.LOGS`, `paths.DOWNLOADS`, `paths.PROFILE`, `paths.SETTINGS_FILE`, `paths._CONSOLE_LOG` and a few handles and caches in `winproc` and `backends` are set while the agent runs (an unattended run, the console, the data folder). A `from ... import` would keep the value from when the importing module loaded, so other modules write `paths.LOGS`, never a copy. |
+| `ghost_agent.py` puts its own folder first on `sys.path` | The agent runs in isolated mode (`python -I ghost_agent.py`; the embeddable Python's `._pth` file turns it on as well, so `Start GhostAgent.cmd` gets it too), and isolated mode leaves the script's folder off `sys.path`. The `._pth` lists `..\agent`, but the entry script does not rely on it, so a test or a hand-started copy elsewhere finds the package too. |
+| `sys.dont_write_bytecode = True` before the first import | With 28 modules, compiled copies would otherwise appear in `__pycache__` folders on the stick (slow writes, stale files after an update). The package's `__init__.py` sets it again for anything that imports the package directly, so such an import (without `-B`) leaves at most the compiled copy of `__init__.py` itself, which is compiled before it runs. |
+| An update mirrors the package | `Update GhostAgent.cmd` copies files without deleting anything (models and downloaded parts stay), but a module that a new version drops must not stay behind next to the new ones, so `GhostAgent\agent\ghostagent` alone is mirrored (robocopy `/MIR`). |
+| Tests patch by name, not by module | `tests/agent_support.py` has `patch_agent`, `patch_agents` and `set_agent`: each replaces a name in the module that defines it and in every module that imported it, so a test reaches every place the agent looks the name up. `helpers.import_agent()` gives tests a read-only view of all modules by name; writing to it fails, so a test cannot set a copy the agent never reads. |
+
+
 ## Rejected or deferred
 
 Runtime and flags:

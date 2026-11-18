@@ -17,7 +17,8 @@ import unittest.mock as mock
 from pathlib import Path
 
 import helpers
-from agent_support import AGENT, StubBrowser, call, make_agent, quiet, reset_stop, scratch_paths, settings
+from agent_support import (AGENT, StubBrowser, call, make_agent, patch_agent, quiet, reset_stop, scratch_paths,
+                           set_agent, settings)
 from security_support import SiteBrowserCase, use_keyboard
 
 DEVICE = {"id": "CUDA0", "name": "NVIDIA GeForce RTX 4090", "total": 24564, "free": 22000, "integrated": False}
@@ -51,14 +52,14 @@ def start_server(test, s, device=DEVICE, backend="cuda13", supported=None, serve
     exe.parent.mkdir(parents=True, exist_ok=True)
     launched = []
     server = server or AGENT.LlamaServer(s)
-    with mock.patch.object(AGENT, "pick_backend", return_value=(backend, exe, device)), \
-            mock.patch.object(AGENT, "model_files", return_value=files or [Path("m.gguf"), Path("p.gguf")]), \
-            mock.patch.object(AGENT, "server_flags", return_value=supported), \
-            mock.patch.object(AGENT, "model_layout", return_value=None), \
-            mock.patch.object(AGENT, "vc_runtime_missing", return_value=[]), \
+    with patch_agent("pick_backend", return_value=(backend, exe, device)), \
+            patch_agent("model_files", return_value=files or [Path("m.gguf"), Path("p.gguf")]), \
+            patch_agent("server_flags", return_value=supported), \
+            patch_agent("model_layout", return_value=None), \
+            patch_agent("vc_runtime_missing", return_value=[]), \
             mock.patch.object(AGENT.subprocess, "Popen", lambda args, **kw: launched.append(args) or Proc()), \
-            mock.patch.object(AGENT, "port_is_free", return_value=True), \
-            mock.patch.object(AGENT, "port_bindable", return_value=True), quiet() as out:
+            patch_agent("port_is_free", return_value=True), \
+            patch_agent("port_bindable", return_value=True), quiet() as out:
         server.start()
     return launched[-1], server, out.getvalue()
 
@@ -199,7 +200,7 @@ class HideShortHomeTests(unittest.TestCase):
             return short_home if path.lower() == long_home.lower() else path
 
         with mock.patch.object(AGENT.Path, "home", return_value=Path(long_home)), \
-                mock.patch.object(AGENT, "short_path", fake_short):
+                patch_agent("short_path", fake_short):
             h = AGENT.hide_home
             self.assertEqual(h(f"{long_home}\\AppData\\x.gguf"), "%USERPROFILE%\\AppData\\x.gguf")
             self.assertEqual(h(f"loading {short_home}\\AppData\\Local\\m.gguf"), "loading %USERPROFILE%\\AppData\\Local\\m.gguf")
@@ -212,7 +213,7 @@ class HideShortHomeTests(unittest.TestCase):
     def test_same_short_and_long_form_is_harmless(self):
         home = "C:\\Users\\bob"
         with mock.patch.object(AGENT.Path, "home", return_value=Path(home)), \
-                mock.patch.object(AGENT, "short_path", lambda p: p):
+                patch_agent("short_path", lambda p: p):
             self.assertEqual(AGENT.hide_home(home + "\\x"), "%USERPROFILE%\\x")
             self.assertEqual(AGENT.hide_home("C:\\Users\\bobby\\x"), "C:\\Users\\bobby\\x")
 
@@ -237,7 +238,7 @@ class PerAgentBrowserCacheTests(unittest.TestCase):
 
     def launch(self, profile):
         from test_security_browser import FakePlaywright
-        with mock.patch.object(AGENT, "PROFILE", profile):
+        with patch_agent("PROFILE", profile):
             b = AGENT.Browser(settings(browser="bundled"))
             self.addCleanup(b.close)
             b.pw = FakePlaywright()
@@ -417,16 +418,16 @@ class VcRuntimeTests(unittest.TestCase):
 
     def test_a_warning_before_the_first_build_runs(self):
         server = AGENT.LlamaServer(settings())
-        with mock.patch.object(AGENT, "BIN", self.folder / "bin"), \
-                mock.patch.object(AGENT, "pick_backend", return_value=("cpu", self.exe, None)), quiet() as out:
+        with patch_agent("BIN", self.folder / "bin"), \
+                patch_agent("pick_backend", return_value=("cpu", self.exe, None)), quiet() as out:
             server._choose_backend()
             server._choose_backend()
         self.assertEqual(out.getvalue().count("vc_redist.x64.exe"), 1)  # said once
         for dll in AGENT.VC_RUNTIME_DLLS:
             (self.windows / "System32" / dll).write_bytes(b"x")
         server = AGENT.LlamaServer(settings())
-        with mock.patch.object(AGENT, "BIN", self.folder / "bin"), \
-                mock.patch.object(AGENT, "pick_backend", return_value=("cpu", self.exe, None)), quiet() as out:
+        with patch_agent("BIN", self.folder / "bin"), \
+                patch_agent("pick_backend", return_value=("cpu", self.exe, None)), quiet() as out:
             server._choose_backend()
         self.assertNotIn("Visual C++", out.getvalue())
 
@@ -476,7 +477,7 @@ class ProfileFieldTests(unittest.TestCase):
 
     def test_the_agent_reads_the_fields(self):
         def with_profile(prof):
-            return mock.patch.object(AGENT, "active_profile", return_value=("x", prof))
+            return patch_agent("active_profile", return_value=("x", prof))
 
         cases = [({"arch": "dense"}, True), ({"arch": "moe"}, False),            # inferred
                  ({"arch": "dense", "takes_reasoning_effort": False}, False),    # said: wins
@@ -508,7 +509,7 @@ class ProfileFieldTests(unittest.TestCase):
         doc["profiles"]["fast-q8"]["ram_gb"] = "lots"      # not a number: the agent's own table
         path = folder / "profiles.json"
         path.write_text(json.dumps(doc), encoding="utf-8")
-        with mock.patch.object(AGENT, "PROFILES_FILE", path):
+        with patch_agent("PROFILES_FILE", path):
             self.assertEqual(AGENT.ram_need_gb(settings(model_profile="fast")), 30)
             self.assertEqual(AGENT.ram_need_gb(settings(model_profile="accurate")), AGENT.RAM_NEED_GB["accurate"])
             self.assertEqual(AGENT.ram_need_gb(settings(model_profile="fast-q8")), AGENT.RAM_NEED_GB["fast-q8"])
@@ -566,7 +567,7 @@ class CtrlCDuringQuestionTests(unittest.TestCase):
         scratch_paths(self)
         self.clock = [1000.0]
         fake_time = types.SimpleNamespace(monotonic=lambda: self.clock[0], sleep=lambda s: None)
-        patcher = mock.patch.object(AGENT, "time", fake_time)
+        patcher = patch_agent("time", fake_time)
         patcher.start()
         self.addCleanup(patcher.stop)
 
@@ -636,8 +637,8 @@ class PlainOutputTests(unittest.TestCase):
         self.clock = [500.0]
         fake_time = types.SimpleNamespace(monotonic=lambda: self.clock[0], time=lambda: self.clock[0],
                                           sleep=lambda s: None)
-        for patcher in (mock.patch.object(AGENT, "time", fake_time),
-                        mock.patch.object(AGENT, "PLAIN_OUTPUT", AGENT.PLAIN_OUTPUT)):  # restored afterwards
+        for patcher in (patch_agent("time", fake_time),
+                        patch_agent("PLAIN_OUTPUT", AGENT.PLAIN_OUTPUT)):  # restored afterwards
             patcher.start()
             self.addCleanup(patcher.stop)
 
@@ -662,7 +663,7 @@ class PlainOutputTests(unittest.TestCase):
             self.assertFalse(AGENT.PLAIN_OUTPUT)
 
     def test_no_colour_codes_in_plain_output(self):
-        AGENT.PLAIN_OUTPUT = True
+        set_agent("PLAIN_OUTPUT", True)
         self.assertEqual(AGENT.c("hello", "33"), "hello")
         with quiet() as out:
             AGENT.info("a note")
@@ -670,11 +671,11 @@ class PlainOutputTests(unittest.TestCase):
             AGENT.err("broken")
             AGENT.head("[1/1] task")
         self.assertEqual(out.getvalue(), "  a note\n  ! careful\n  x broken\n[1/1] task\n")
-        AGENT.PLAIN_OUTPUT = False
+        set_agent("PLAIN_OUTPUT", False)
         self.assertEqual(AGENT.c("hello", "33"), "\x1b[33mhello\x1b[0m")
 
     def test_a_live_line_writes_plain_lines_now_and_then(self):
-        AGENT.PLAIN_OUTPUT = True
+        set_agent("PLAIN_OUTPUT", True)
         with quiet() as out:
             live = AGENT.LiveLine()
             live.show("loading 10%")
@@ -687,7 +688,7 @@ class PlainOutputTests(unittest.TestCase):
         self.assertEqual(out.getvalue(), "  loading 10%\n  loading 60%\n  loaded in 21 s\n")
 
     def test_a_step_status_line_writes_nothing_without_a_console(self):
-        AGENT.PLAIN_OUTPUT = True
+        set_agent("PLAIN_OUTPUT", True)
         with quiet() as out:
             live = AGENT.LiveLine(every=None)
             for _ in range(3):
@@ -697,7 +698,7 @@ class PlainOutputTests(unittest.TestCase):
         self.assertEqual(out.getvalue(), "")
 
     def test_a_live_line_redraws_in_place_on_a_console(self):
-        AGENT.PLAIN_OUTPUT = False
+        set_agent("PLAIN_OUTPUT", False)
         with quiet() as out:
             live = AGENT.LiveLine()
             live.show("a")
@@ -712,7 +713,7 @@ class PlainOutputTests(unittest.TestCase):
         self.assertEqual(out.getvalue(), "\r  step 1   \r" + " " * 10 + "\r")
 
     def test_copy_progress_ends_with_one_plain_line(self):
-        AGENT.PLAIN_OUTPUT = True
+        set_agent("PLAIN_OUTPUT", True)
         with quiet() as out:
             show = AGENT.console_progress()
             progress = AGENT.Progress(4 * 10**9, "copying", show)
@@ -774,7 +775,7 @@ class BlockEvictionShorteningTests(unittest.TestCase):
         browser = StubBrowser(results={"scroll_web": self.LONG})
         agent, fake, _ = make_agent(self, script=script, browser=browser, image_eviction=mode, image_keep_after_evict=2,
                                     image_budget=budget)
-        off = mock.patch.object(AGENT, "shorten_old_results", lambda *a, **k: 0)
+        off = patch_agent("shorten_old_results", lambda *a, **k: 0)
         with quiet(), (contextlib.nullcontext() if shorten else off):
             self.assertEqual(agent.run("Scroll a while."), "done")
         bodies = [r["body"]["messages"] for r in fake.chat_requests()]
@@ -883,7 +884,7 @@ class MissingBackendTests(unittest.TestCase):
         self.gpus = [{"name": DEVICE["name"], "compute_cap": 8.9, "driver": "621.01", "driver_major": 621}]
         for name, value in (("BIN", self.bin), ("list_devices", self.list_devices),
                             ("nvidia_smi_gpus", lambda: self.gpus), ("nvidia_gpu_present", lambda: True)):
-            patcher = mock.patch.object(AGENT, name, value)
+            patcher = patch_agent(name, value)
             patcher.start()
             self.addCleanup(patcher.stop)
 
@@ -933,8 +934,8 @@ class MissingBackendTests(unittest.TestCase):
         backend, device, out = self.pick()
         self.assertEqual((backend, device), ("vulkan", None))
         server = AGENT.LlamaServer(settings())
-        with mock.patch.object(AGENT, "pick_backend", return_value=("vulkan", self.bin / "vulkan" / "llama-server.exe", None)), \
-                mock.patch.object(AGENT, "vc_runtime_missing", return_value=[]), quiet() as out:
+        with patch_agent("pick_backend", return_value=("vulkan", self.bin / "vulkan" / "llama-server.exe", None)), \
+                patch_agent("vc_runtime_missing", return_value=[]), quiet() as out:
             server._choose_backend()
         self.assertIn("Running on the CPU only", out.getvalue())
         self.assertFalse(server.can_fall_back())  # already on the CPU: no build left to try
@@ -942,7 +943,7 @@ class MissingBackendTests(unittest.TestCase):
     def test_a_forced_build_that_is_not_there_still_falls_back(self):
         # It is tried as "auto", so the server falls back as with "auto" when a build cannot load the model.
         server = AGENT.LlamaServer(settings(backend="cuda12"))
-        with mock.patch.object(AGENT, "vc_runtime_missing", return_value=[]), quiet() as out:
+        with patch_agent("vc_runtime_missing", return_value=[]), quiet() as out:
             server._choose_backend()
             self.assertEqual(server.choice[0], "cuda13")
             self.assertTrue(server.can_fall_back())  # before the fix: False, so no other build was tried

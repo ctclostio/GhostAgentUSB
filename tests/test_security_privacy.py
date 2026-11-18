@@ -13,7 +13,8 @@ import unittest.mock as mock
 from pathlib import Path
 
 import helpers
-from agent_support import AGENT, StubBrowser, call, quiet, reset_stop, scratch_paths, settings
+from agent_support import (AGENT, StubBrowser, call, patch_agent, patch_agents, quiet, reset_stop, scratch_paths,
+                           settings)
 from security_support import SiteBrowserCase
 
 EVIL = "\x1b]0;evil title\x07"
@@ -122,7 +123,7 @@ class ConsoleTextTests(unittest.TestCase):
             sets.append(text)
             return put(text)
 
-        with mock.patch.multiple(AGENT, get_clipboard_text=lambda: board["text"], copy_to_clipboard=put,
+        with patch_agents(get_clipboard_text=lambda: board["text"], copy_to_clipboard=put,
                                  set_clipboard_text=put_back):
             give_back = AGENT.lend_clipboard(AGENT.INSPECT_URL)
             self.assertEqual(board["text"], AGENT.INSPECT_URL)
@@ -138,7 +139,7 @@ class ConsoleTextTests(unittest.TestCase):
             give_back = AGENT.lend_clipboard(AGENT.INSPECT_URL)
             give_back()
             self.assertEqual(sets, ["the user's own text"])
-        with mock.patch.object(AGENT, "copy_to_clipboard", lambda text: False):
+        with patch_agent("copy_to_clipboard", lambda text: False):
             self.assertIsNone(AGENT.lend_clipboard("x"))
 
 

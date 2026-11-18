@@ -8,7 +8,8 @@ import unittest
 import unittest.mock as mock
 from pathlib import Path
 
-from agent_support import AGENT, quiet, reset_stop, scratch_paths, settings
+import helpers
+from agent_support import AGENT, patch_agent, quiet, reset_stop, scratch_paths, settings
 from security_support import FakeKeyboard, SiteBrowserCase, use_keyboard
 
 
@@ -157,8 +158,12 @@ class ConsoleTextTests(unittest.TestCase):
 
     def test_no_bidirectional_controls_in_the_source(self):
         # They make code read differently from what it does (and GitHub flags such files).
-        source = Path(AGENT.__file__).read_text(encoding="utf-8")
-        self.assertFalse([c for c in source if 0x202A <= ord(c) <= 0x202E or 0x2066 <= ord(c) <= 0x2069])
+        # Every file of the agent: the entry script and each module of its package.
+        sources = helpers.agent_sources()
+        self.assertGreater(len(sources), 2)
+        for path in sources:
+            source = path.read_text(encoding="utf-8")
+            self.assertFalse([c for c in source if 0x202A <= ord(c) <= 0x202E or 0x2066 <= ord(c) <= 0x2069], path.name)
 
 
 class Proc:
@@ -175,10 +180,10 @@ class KeyFileTests(unittest.TestCase):
         exe.parent.mkdir(parents=True, exist_ok=True)
         (exe.parent / "keys.txt").write_text("# comment\nrelative-key\n", encoding="utf-8")
         server = AGENT.LlamaServer(settings(extra_server_args=["--api-key-file", "keys.txt"]))
-        with mock.patch.object(AGENT, "pick_backend", return_value=("cpu", exe, None)), \
-                mock.patch.object(AGENT, "model_files", return_value=[Path("m.gguf"), Path("p.gguf")]), \
+        with patch_agent("pick_backend", return_value=("cpu", exe, None)), \
+                patch_agent("model_files", return_value=[Path("m.gguf"), Path("p.gguf")]), \
                 mock.patch.object(AGENT.subprocess, "Popen", lambda args, **kw: Proc()), \
-                mock.patch.object(AGENT, "port_is_free", return_value=True), \
+                patch_agent("port_is_free", return_value=True), \
                 mock.patch.dict(os.environ, {}), quiet() as out:
             server.start()
         self.assertEqual(server.api_key, "relative-key")

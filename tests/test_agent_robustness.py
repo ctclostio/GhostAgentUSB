@@ -11,7 +11,7 @@ import unittest.mock as mock
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import helpers
-from agent_support import AGENT, quiet, read_jsonl, reset_stop, scratch_paths, steps_file
+from agent_support import AGENT, patch_agent, quiet, read_jsonl, reset_stop, scratch_paths, steps_file
 
 BODY = {"messages": [{"role": "user", "content": "hello"}], "stream": True}
 
@@ -63,7 +63,7 @@ class NewLayoutIsNotConvertedTests(unittest.TestCase):
         defaults = self.dir / "settings.default.json"
         shutil.copy(AGENT.DEFAULTS_FILE, defaults)
         for name, value in (("SETTINGS_FILE", self.user), ("DEFAULTS_FILE", defaults)):
-            p = mock.patch.object(AGENT, name, value)
+            p = patch_agent(name, value)
             p.start()
             self.addCleanup(p.stop)
 
@@ -133,7 +133,7 @@ class TraceErrorTests(unittest.TestCase):
 class UnattendedNeverWaitsTests(unittest.TestCase):
     def test_a_mistyped_option_in_an_unattended_command_does_not_wait_for_enter(self):
         asked = []
-        with quiet() as out, mock.patch.object(AGENT, "HEADLESS", False), \
+        with quiet() as out, patch_agent("HEADLESS", False), \
                 mock.patch.object(builtins, "input", lambda prompt="": asked.append(prompt) or ""):
             code = AGENT.run_main(["--tasks-file", "tasks.json", "--reslts", "out.jsonl"])
         self.assertEqual(code, 2)
@@ -142,7 +142,7 @@ class UnattendedNeverWaitsTests(unittest.TestCase):
 
     def test_a_mistyped_option_in_an_interactive_start_still_waits(self):
         asked = []
-        with quiet(), mock.patch.object(AGENT, "HEADLESS", False), \
+        with quiet(), patch_agent("HEADLESS", False), \
                 mock.patch.object(builtins, "input", lambda prompt="": asked.append(prompt) or ""):
             code = AGENT.run_main(["--browsr", "bundled"])
         self.assertEqual(code, 2)

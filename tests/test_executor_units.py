@@ -7,7 +7,7 @@ import unittest.mock as mock
 from pathlib import Path
 
 import helpers
-from agent_support import AGENT
+from agent_support import AGENT, patch_agent
 
 
 class KeyChordTests(unittest.TestCase):
@@ -208,9 +208,9 @@ class DownloadNameTests(unittest.TestCase):
 
     def test_the_folder_is_on_this_pc(self):
         home = helpers.temp_dir(self)
-        with mock.patch.object(AGENT, "DOWNLOADS", None), mock.patch.dict(os.environ, {"USERPROFILE": str(home)}):
+        with patch_agent("DOWNLOADS", None), mock.patch.dict(os.environ, {"USERPROFILE": str(home)}):
             self.assertEqual(AGENT.download_folder(), Path(home) / "Downloads" / "GhostAgent")
-        with mock.patch.object(AGENT, "DOWNLOADS", home / "d"):
+        with patch_agent("DOWNLOADS", home / "d"):
             self.assertEqual(AGENT.download_folder(), home / "d")
 
     def test_mark_of_the_web(self):

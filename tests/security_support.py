@@ -6,10 +6,9 @@ Nothing here reads the real console: the agent's key reader is pointed at FakeKe
 import _thread
 import signal
 import unittest
-import unittest.mock as mock
 
 import helpers
-from agent_support import AGENT, quiet, reset_stop, scratch_paths, settings
+from agent_support import AGENT, patch_agent, quiet, reset_stop, scratch_paths, settings
 
 
 def ctrl_c():
@@ -63,7 +62,7 @@ def use_keyboard(test, *answers, early=""):
         return real_ask(question, *args, **kwargs)
 
     for name, value in (("_keyboard", lambda: kb), ("ask_console", ask)):
-        patcher = mock.patch.object(AGENT, name, value)
+        patcher = patch_agent(name, value)
         patcher.start()
         test.addCleanup(patcher.stop)
     return kb, asked

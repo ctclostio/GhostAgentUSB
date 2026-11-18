@@ -15,7 +15,7 @@ import unittest.mock as mock
 from pathlib import Path
 
 import helpers
-from agent_support import AGENT, StubBrowser, call, quiet, read_jsonl, run_cli, scratch_paths, settings
+from agent_support import AGENT, StubBrowser, call, patch_agent, quiet, read_jsonl, run_cli, scratch_paths, settings
 
 
 REAL_POPEN = subprocess.Popen  # the tests below replace subprocess.Popen while the agent starts its server
@@ -42,10 +42,10 @@ class ServerStartTests(unittest.TestCase):
             return popen(args, **kw) if popen else Proc()
 
         server = AGENT.LlamaServer(test_settings)
-        with mock.patch.object(AGENT, "pick_backend", return_value=("cpu", exe, None)), \
-                mock.patch.object(AGENT, "model_files", return_value=[Path("m.gguf"), Path("p.gguf")]), \
+        with patch_agent("pick_backend", return_value=("cpu", exe, None)), \
+                patch_agent("model_files", return_value=[Path("m.gguf"), Path("p.gguf")]), \
                 mock.patch.object(AGENT.subprocess, "Popen", record), \
-                mock.patch.object(AGENT, "port_is_free", return_value=True), \
+                patch_agent("port_is_free", return_value=True), \
                 mock.patch.dict(os.environ, environ or {}), quiet() as out:
             server.start()
         self.assertEqual(len(launched), 1)

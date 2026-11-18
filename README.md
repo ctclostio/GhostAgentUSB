@@ -11,7 +11,7 @@ This is version 0.2.0. The speed figures on this page were measured **before** t
 | Model | [Holo4](https://huggingface.co/Hcompany) by H Company, vision models trained for computer use. Three profiles: **fast** (Holo4-35B-A3B Q4_K_M, the default), **fast-q8** (the same model at Q8_0) and **accurate** (Holo4-27B Q4_K_M, non-commercial license). See [Model profiles](#model-profiles). |
 | Runtime | [llama.cpp](https://github.com/ggml-org/llama.cpp) b11669 (b12359, the v1.0.0 release, is one build option away), with CUDA 13, CUDA 12, Vulkan and CPU builds. The best one is picked automatically, and the next one is tried if it cannot run the model. |
 | Browser | By default a window in **your own Google Chrome** (Chrome 144 or newer), so it has your sign-ins. Your own Edge, the installed Chrome with a separate profile, or a portable Chromium or Edge with a profile on the stick are one setting away. |
-| Harness | `GhostAgent/agent/ghost_agent.py`, a single Python file: a Playwright agent loop that follows H Company's published Holo4 conventions, plus safety checks that do not depend on the model. |
+| Harness | `GhostAgent/agent/ghost_agent.py`, which starts the `ghostagent` package next to it (plain Python, one module per part): a Playwright agent loop that follows H Company's published Holo4 conventions, plus safety checks that do not depend on the model. |
 | Python | 3.14 embeddable with Playwright 1.65.1, so nothing is installed on the PC. |
 
 
@@ -303,7 +303,8 @@ tools/
   bench/                   benchmark site, stand-in model server, scorer, replay tool
 tests/                     unit and headless browser tests (no GPU or model needed)
 GhostAgent/
-  agent/ghost_agent.py     the agent
+  agent/ghost_agent.py     starts the agent
+  agent/ghostagent/        the agent's modules (its __init__.py lists them)
   settings.default.json    every setting with its default and a note (replaced by updates)
   settings.json            your own changes (created on the first start; not in git)
   models/                  SOURCE.txt and SHA256SUMS.txt in git; the .gguf files are downloaded

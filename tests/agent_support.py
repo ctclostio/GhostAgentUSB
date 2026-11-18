@@ -18,6 +18,57 @@ AGENT_PY = helpers.AGENT_DIR / "ghost_agent.py"
 TINY_PNG = helpers.make_png(64, 40)
 
 
+class AgentPatch:
+    """mock.patch.object for the agent's package: each name is replaced in the module that defines
+    it and in every module that imported it by name (or, for a module such as time, in every module
+    that imports it), so every lookup sees the stand-in. start()/stop(), or use it in a with."""
+
+    def __init__(self, values):
+        self.values = values
+        self.patchers = []
+
+    def start(self):
+        for name, new in self.values.items():
+            for module in AGENT._lookup_sites(name):
+                patcher = mock.patch.object(module, name, new)
+                patcher.start()
+                self.patchers.append(patcher)
+        return next(iter(self.values.values())) if len(self.values) == 1 else self.values
+
+    def stop(self):
+        while self.patchers:
+            self.patchers.pop().stop()
+
+    def __enter__(self):
+        return self.start()
+
+    def __exit__(self, *exc):
+        self.stop()
+        return False
+
+
+def patch_agent(name, new=mock.DEFAULT, **mock_kwargs):
+    """Replace one name of the agent for a test, like mock.patch.object(module, name, new): without
+    `new`, with a MagicMock made from mock_kwargs (return_value=..., side_effect=...)."""
+    if new is mock.DEFAULT:
+        new = mock.MagicMock(**mock_kwargs)
+    elif mock_kwargs:
+        raise TypeError("patch_agent takes either a new value or MagicMock arguments")
+    return AgentPatch({name: new})
+
+
+def patch_agents(**values):
+    """Replace several names of the agent at once (like mock.patch.multiple)."""
+    return AgentPatch(values)
+
+
+def set_agent(name, value):
+    """Set a name of the agent wherever it is looked up, for the rest of the test (a test that
+    does this restores the name itself, usually with a patch_agent that is still active)."""
+    for module in AGENT._lookup_sites(name):
+        setattr(module, name, value)
+
+
 def settings(**over):
     """The default settings with some changed (no settings file is read)."""
     s = copy.deepcopy(AGENT.DEFAULT_SETTINGS)
@@ -33,7 +84,7 @@ def scratch_paths(test, folder=None):
                         ("PROFILE", folder / "browser-profile"), ("SETTINGS_FILE", folder / "settings.json"),
                         # The test runner's console is the user's: never retitle it or bring it forward.
                         ("set_console_title", lambda text: None), ("focus_console", lambda: None)):
-        patcher = mock.patch.object(AGENT, name, value)
+        patcher = patch_agent(name, value)
         patcher.start()
         test.addCleanup(patcher.stop)
     return folder
@@ -66,7 +117,7 @@ def steps_file(folder):
 
 
 class StubBrowser:
-    """Just enough of ghost_agent.Browser for Agent.run: every observation is a small PNG of a
+    """Just enough of the agent's Browser for Agent.run: every observation is a small PNG of a
     fixed page, every action is recorded and answered with 'Executed.'. navigate_on: {tool name:
     address} the page moves to when that tool runs; refuse_on: tools answered like a refusal (not
     done: last_ok False); results: {tool name: text} returned instead of 'Executed.'."""
@@ -200,7 +251,8 @@ def call(name, **args):
 
 
 def run_cli(args, timeout=180, **kwargs):
-    """Run ghost_agent.py with the stick's Python, without a console window. Returns CompletedProcess."""
+    """Run ghost_agent.py (the entry script) with the stick's Python, without a console window.
+    Returns CompletedProcess."""
     return helpers.run_python([AGENT_PY] + [str(a) for a in args], timeout=timeout, encoding="utf-8",
                               errors="replace", **kwargs)
 

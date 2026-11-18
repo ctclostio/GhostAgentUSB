@@ -4,6 +4,7 @@ rem Updates GhostAgent: gets the newest files (git pull when this folder is a gi
 rem the latest ZIP from GitHub), copies them over this folder and then runs the build, which only
 rem replaces downloaded parts whose pinned versions changed.
 rem Kept as they are: GhostAgent\settings.json, the browser profiles (sign-ins), downloads and logs.
+rem The agent's modules (GhostAgent\agent\ghostagent) are replaced as a whole, so none is left behind.
 rem Options are passed on to the build, for example  -Profile accurate  or  -LlamaTag b12359.
 rem   -UpdateFrom "D:\Downloads\GhostAgentUSB-main.zip"   update from a ZIP or folder you already have
 if /i "%~1"=="--from-temp" goto :run

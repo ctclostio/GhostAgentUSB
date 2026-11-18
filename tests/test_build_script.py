@@ -154,6 +154,25 @@ Report dest_other_drive (Get-ModelDestNote 'E:\GhostAgent\models')
 $NoStaging = $true
 Report dest_no_staging (Get-ModelDestNote 'E:\GhostAgent\models')
 $NoStaging = $false
+
+# --- an update mirrors the agent's package and keeps everything else ------------------------------
+$us = Join-Path $t 'update-src'
+$ud = Join-Path $t 'update-dst'
+foreach ($d in "$us\GhostAgent\agent\ghostagent", "$ud\GhostAgent\agent\ghostagent", "$ud\GhostAgent\models") {
+    New-Item -ItemType Directory -Force -Path $d | Out-Null
+}
+Set-Content -LiteralPath "$us\GhostAgent\agent\ghost_agent.py" -Value 'new'
+Set-Content -LiteralPath "$us\GhostAgent\agent\ghostagent\cli.py" -Value 'new'
+Set-Content -LiteralPath "$ud\GhostAgent\agent\ghostagent\cli.py" -Value 'old'
+Set-Content -LiteralPath "$ud\GhostAgent\agent\ghostagent\gone.py" -Value 'a module the new version no longer has'
+Set-Content -LiteralPath "$ud\GhostAgent\models\m.gguf" -Value 'model'
+$savedRoot = $Root
+$Root = $ud
+Copy-UpdateFiles $us (Join-Path $ud 'GhostAgent\settings.json') | Out-Null
+$Root = $savedRoot
+Report update_module_replaced ((Get-Content -LiteralPath "$ud\GhostAgent\agent\ghostagent\cli.py") -join '')
+Report update_stale_module_gone (-not (Test-Path -LiteralPath "$ud\GhostAgent\agent\ghostagent\gone.py"))
+Report update_model_kept (Test-Path -LiteralPath "$ud\GhostAgent\models\m.gguf")
 """
 
 
@@ -238,6 +257,11 @@ class BuildScriptTests(unittest.TestCase):
         self.assertEqual(self.result("proxy_url"), "http://proxy.test:3128")
         self.assertEqual(self.result("proxy_curl"), "--proxy http://proxy.test:3128")
         self.assertTrue(self.result("proxy_update_uses_it"))
+        # The same update step mirrors the agent's package (GhostAgent\agent\ghostagent): a module the
+        # new version no longer has does not stay behind, and nothing outside the package is deleted.
+        self.assertEqual(self.result("update_module_replaced"), "new")
+        self.assertTrue(self.result("update_stale_module_gone"))
+        self.assertTrue(self.result("update_model_kept"))
 
     def test_missing_optional_flags_are_only_a_note(self):
         # The agent leaves out optional flags a build lacks, so nothing "would fail".

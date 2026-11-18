@@ -14,8 +14,8 @@ from pathlib import Path
 
 import helpers
 from helpers import fake_llama
-from agent_support import (AGENT, StubBrowser, call, make_agent, quiet, read_jsonl, reset_stop, scratch_paths,
-                           settings, steps_file)
+from agent_support import (AGENT, StubBrowser, call, make_agent, patch_agent, quiet, read_jsonl, reset_stop,
+                           scratch_paths, settings, steps_file)
 
 import replay
 
@@ -209,7 +209,7 @@ class StepTraceTests(unittest.TestCase):
             captured.append(json.loads(json.dumps(body)))
             return real(base, body, on_event, api_key=api_key)
 
-        with mock.patch.object(AGENT, "stream_chat", spy):
+        with patch_agent("stream_chat", spy):
             agent, fake, folder, result = self.run_task(script, trace_messages=True)
         self.assertEqual(result, "ok")
         task_dir = folder / "logs" / "replay" / agent.last["task_id"]
@@ -268,12 +268,14 @@ class ConsoleLogTests(unittest.TestCase):
         code = (
             "import sys, threading\n"
             f"sys.path.insert(0, {str(helpers.AGENT_DIR)!r})\n"
-            "import ghost_agent as g\n"
-            f"g.set_data_dir({str(folder)!r})\n"
-            "path = g.install_console_log()\n"
-            "print(g.c('coloured hello', '1;36'))\n"
-            "g.warn('a warning')\n"
-            "g.log_only('Task> only in the log')\n"
+            "import ghost_agent\n"  # the entry script, which puts the agent's package on sys.path
+            "from ghostagent.console import c, warn\n"
+            "from ghostagent.paths import install_console_log, log_only, set_data_dir\n"
+            f"set_data_dir({str(folder)!r})\n"
+            "path = install_console_log()\n"
+            "print(c('coloured hello', '1;36'))\n"
+            "warn('a warning')\n"
+            "log_only('Task> only in the log')\n"
             "t = threading.Thread(target=lambda: 1 / 0); t.start(); t.join()\n"
             "raise ValueError('the end')\n")
         r = helpers.run_python(["-B", "-c", code], encoding="utf-8", errors="replace")
@@ -403,11 +405,11 @@ class ServerPlumbingTests(unittest.TestCase):
 
         server = AGENT.LlamaServer(test_settings)
         server.emulate_free_vram_mib, server.affinity_mask = emulate, mask
-        with mock.patch.object(AGENT, "pick_backend", return_value=("cuda13", exe, device)), \
-                mock.patch.object(AGENT, "model_files", return_value=[Path("m.gguf"), Path("p.gguf")]), \
+        with patch_agent("pick_backend", return_value=("cuda13", exe, device)), \
+                patch_agent("model_files", return_value=[Path("m.gguf"), Path("p.gguf")]), \
                 mock.patch.object(AGENT.subprocess, "Popen", popen), \
-                mock.patch.object(AGENT, "set_process_affinity", lambda p, m: affinity.append(m) or m), \
-                mock.patch.object(AGENT, "port_is_free", return_value=True), quiet():
+                patch_agent("set_process_affinity", lambda p, m: affinity.append(m) or m), \
+                patch_agent("port_is_free", return_value=True), quiet():
             server.start(auto_fit=auto_fit)
         self.assertEqual(len(launched), 1)
         args, kw = launched[0]

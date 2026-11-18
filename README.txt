@@ -336,7 +336,8 @@ FOLDERS
   Start GhostAgent.cmd     starts the agent
   Build GhostAgent.cmd     downloads or repairs everything below (safe to run again)
   Update GhostAgent.cmd    gets the newest version, then runs the build
-  GhostAgent\agent         the agent (ghost_agent.py)
+  GhostAgent\agent         the agent (ghost_agent.py starts the modules in its
+                           ghostagent folder)
   GhostAgent\bin           llama.cpp builds (cuda13, cuda12, vulkan, cpu; no cuda12 on ARM64)
   GhostAgent\models        model files (pinned versions: tools\profiles.json)
   GhostAgent\python        portable Python with Playwright

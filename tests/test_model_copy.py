@@ -15,7 +15,7 @@ import unittest.mock as mock
 from pathlib import Path
 
 import helpers
-from agent_support import AGENT, quiet, scratch_paths, settings
+from agent_support import AGENT, patch_agent, quiet, scratch_paths, settings
 
 
 class Proc:
@@ -64,7 +64,7 @@ class CopyCase(unittest.TestCase):
 
     def copy(self, src, **kw):
         notes = []
-        with mock.patch.object(AGENT, "COPY_CHUNK", 64 * 1024):
+        with patch_agent("COPY_CHUNK", 64 * 1024):
             got = AGENT.copy_model_file(src, self.dest, notes=notes, **kw)
         return got, notes
 
@@ -84,7 +84,7 @@ class CopyFileTests(CopyCase):
         self.assertEqual(rec["sha256"], hashlib.sha256(src.read_bytes()).hexdigest())
         self.assertFalse((self.dest / (src.name + ".part")).exists())
         # the next start compares size and time only
-        with mock.patch.object(AGENT, "_hash_into", side_effect=AssertionError("hashed again")):
+        with patch_agent("_hash_into", side_effect=AssertionError("hashed again")):
             self.assertEqual(self.copy(src)[0], got)
 
     def test_an_interrupted_copy_is_resumed(self):
@@ -139,7 +139,7 @@ class CopyFileTests(CopyCase):
 
     def test_the_pin_in_profiles_is_used_without_sums_file(self):
         src = self.model(listed=False)
-        with mock.patch.object(AGENT, "pinned_sha256", return_value="0" * 64):
+        with patch_agent("pinned_sha256", return_value="0" * 64):
             self.assertEqual(AGENT.expected_sha256(src), "0" * 64)
             self.dest.mkdir(parents=True)
             got, notes = self.copy(src)
@@ -151,7 +151,7 @@ class CopyFileTests(CopyCase):
         self.dest.mkdir(parents=True)
         part = self.dest / (src.name + ".part")
         part.write_bytes(src.read_bytes()[:1000])
-        with mock.patch.object(AGENT, "free_bytes", return_value=10):
+        with patch_agent("free_bytes", return_value=10):
             got, notes = self.copy(src)
         self.assertEqual(got, src)
         self.assertIn("Not enough free disk space", notes[0])
@@ -183,7 +183,7 @@ class CopyFileTests(CopyCase):
             "name": src.name, "size": st.st_size, "mtime": st.st_mtime_ns / 1e9, "mtime_ns": st.st_mtime_ns,
             "sha256": hashlib.sha256(src.read_bytes()).hexdigest().upper()}}}
         (self.dest / ".verified").write_text(json.dumps(doc), encoding="ascii")
-        with mock.patch.object(AGENT, "_hash_into", side_effect=AssertionError("hashed again")):
+        with patch_agent("_hash_into", side_effect=AssertionError("hashed again")):
             self.assertEqual(self.copy(src)[0], dst)
 
     def test_cancel_stops_the_copy(self):
@@ -213,7 +213,7 @@ class CopyFileTests(CopyCase):
         data = bytes(range(256)) * 100
         src = self.dest / "Holo4-35B-A3B-Q4_K_M.gguf"
         src.write_bytes(data)
-        with mock.patch.object(AGENT, "expected_sha256", return_value="0" * 64):  # does not match
+        with patch_agent("expected_sha256", return_value="0" * 64):  # does not match
             got, notes = self.copy(src)
         self.assertEqual(got, src)
         self.assertEqual(src.read_bytes(), data)
@@ -224,7 +224,7 @@ class CopyFileTests(CopyCase):
         self.dest.mkdir(parents=True)
         for name in ("Holo4-35B-A3B-Q4_K_M.gguf", "Holo4-27B-Q4_K_M.gguf"):
             (self.dest / name).write_bytes(b"x")
-        with mock.patch.object(AGENT, "PROFILES_FILE", self.base / "missing" / "profiles.json"):
+        with patch_agent("PROFILES_FILE", self.base / "missing" / "profiles.json"):
             self.assertIs(AGENT.load_profiles(), AGENT.FALLBACK_PROFILES)
             self.assertEqual(AGENT.prune_model_cache(self.dest, ["Holo4-35B-A3B-Q4_K_M.gguf"]), [])
         self.assertTrue((self.dest / "Holo4-27B-Q4_K_M.gguf").exists())
@@ -252,10 +252,10 @@ class DecideTests(CopyCase):
             asked.append(question)
             return answer if answer is not None else (None, "timeout")
 
-        with mock.patch.object(AGENT, "drive_type", return_value=2 if removable else 3), \
-                mock.patch.object(AGENT, "same_drive", return_value=False), \
-                mock.patch.object(AGENT, "free_bytes", return_value=free), \
-                mock.patch.object(AGENT, "ask_console", ask), quiet():
+        with patch_agent("drive_type", return_value=2 if removable else 3), \
+                patch_agent("same_drive", return_value=False), \
+                patch_agent("free_bytes", return_value=free), \
+                patch_agent("ask_console", ask), quiet():
             got = AGENT.decide_model_copy(dict(self.s, **over), interactive)
         return got, asked
 
@@ -312,12 +312,12 @@ class BeginTests(CopyCase):
             def __exit__(self, *a):
                 return False
 
-        with mock.patch.object(AGENT, "pick_backend", return_value=("cpu", exe, None)), \
-                mock.patch.object(AGENT, "COPY_CHUNK", 64 * 1024), \
-                mock.patch.object(AGENT, "keep_pc_awake", Awake), \
+        with patch_agent("pick_backend", return_value=("cpu", exe, None)), \
+                patch_agent("COPY_CHUNK", 64 * 1024), \
+                patch_agent("keep_pc_awake", Awake), \
                 mock.patch.object(AGENT.subprocess, "Popen", lambda args, **kw: launched.append(args) or Proc()), \
-                mock.patch.object(AGENT, "port_is_free", return_value=True), \
-                mock.patch.object(AGENT, "server_healthy", return_value=True), quiet() as out:
+                patch_agent("port_is_free", return_value=True), \
+                patch_agent("server_healthy", return_value=True), quiet() as out:
             self.assertEqual(server.begin(interactive=False), "cpu")
             self.assertIsNotNone(server.wait_ready())
         self.assertEqual(awake, ["model-start"])  # the PC stays awake while it copies
@@ -343,11 +343,11 @@ class BeginTests(CopyCase):
             time.sleep(0.05)
             self_progress.done += n
 
-        with mock.patch.object(AGENT, "pick_backend", return_value=("cpu", exe, None)), \
-                mock.patch.object(AGENT, "COPY_CHUNK", 16 * 1024), \
+        with patch_agent("pick_backend", return_value=("cpu", exe, None)), \
+                patch_agent("COPY_CHUNK", 16 * 1024), \
                 mock.patch.object(AGENT.Progress, "add", slow_add), \
                 mock.patch.object(AGENT.subprocess, "Popen", lambda args, **kw: launched.append(args) or Proc()), \
-                mock.patch.object(AGENT, "_hash_into", real_hash), quiet():
+                patch_agent("_hash_into", real_hash), quiet():
             server.begin(interactive=False)
             self.assertTrue(started.wait(10))
             server.stop()

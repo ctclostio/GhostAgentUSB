@@ -14,8 +14,8 @@ import unittest
 import unittest.mock as mock
 
 import helpers
-from agent_support import (AGENT, StubBrowser, call, make_agent, quiet, read_jsonl, reset_stop, scratch_paths,
-                           settings, steps_file)
+from agent_support import (AGENT, StubBrowser, call, make_agent, patch_agent, quiet, read_jsonl, reset_stop,
+                           scratch_paths, settings, steps_file)
 
 
 def press_ctrl_c(after):
@@ -41,7 +41,7 @@ class HandlerTests(unittest.TestCase):
         before = signal.getsignal(signal.SIGINT)
         clock = [100.0]
         fake_time = types.SimpleNamespace(monotonic=lambda: clock[0])
-        with quiet() as out, mock.patch.object(AGENT, "time", fake_time):
+        with quiet() as out, patch_agent("time", fake_time):
             with AGENT.ctrl_c_stops_task():
                 self.assertIsNot(signal.getsignal(signal.SIGINT), before)
                 handler = signal.getsignal(signal.SIGINT)
@@ -165,12 +165,14 @@ class PlaywrightSurvivesTests(unittest.TestCase):
         code = textwrap.dedent(f"""
             import _thread, os, signal, sys, threading
             sys.path.insert(0, {str(helpers.AGENT_DIR)!r})
-            import ghost_agent as g
+            import ghost_agent  # the entry script, which puts the agent's package on sys.path
+            from ghostagent.browser import Browser
+            from ghostagent.settings import DEFAULT_SETTINGS
             from playwright.sync_api import sync_playwright
             pw = sync_playwright().start()
             browser = pw.chromium.launch(channel="chromium", headless=True, args={helpers.CHROMIUM_ARGS!r})
             page = browser.new_page()
-            holder = g.Browser({{**g.DEFAULT_SETTINGS, "browser": "bundled"}})
+            holder = Browser({{**DEFAULT_SETTINGS, "browser": "bundled"}})
             holder.pw = pw
             print("before", holder.playwright_dead(), flush=True)
             threading.Timer(0.3, _thread.interrupt_main, args=(signal.SIGINT,)).start()
@@ -325,7 +327,7 @@ class RunMainTests(unittest.TestCase):
         def main(argv=None):
             raise exc
 
-        with quiet() as out, mock.patch.object(AGENT, "main", main), mock.patch.object(AGENT, "HEADLESS", headless), \
+        with quiet() as out, patch_agent("main", main), patch_agent("HEADLESS", headless), \
                 mock.patch.object(builtins, "input", lambda prompt="": asked.append(prompt) or ""):
             code = AGENT.run_main([])
         return code, out.getvalue(), asked
