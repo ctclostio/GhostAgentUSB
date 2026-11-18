@@ -1523,13 +1523,14 @@ class Browser:
                 note = (note + " " if note else "") + self._no_move
             elif moved:
                 changed = True  # a panel scrolled: the page's own position may be the same
+                after = None    # ... so its fingerprint cannot tell old from new: count the scroll as new
         out = "Executed."
         if note:
             out += " " + note
         if changed is False and self._no_move not in out:
             out += " The page did not change."
         if name != "wait_web" or changed:
-            n = self.stall.record(action_signature(name, args), after, changed)
+            n = self.stall.record(action_signature(name, args), after, changed, before)
             if n:
                 self._alert = STALL_ALERT.format(n=n)
         if self.events:

@@ -101,9 +101,30 @@ class StallTests(unittest.TestCase):
         s.record(a, "p", False)
         s.record(a, "p", None)
         s.record(a, "p", False)
-        s.record(a, "p", True)
-        self.assertEqual(s.record(a, "p", False), 0)
+        s.record(a, "q", True)
+        self.assertEqual(s.record(a, "q", False), 0)
         self.assertEqual(s.unchanged, 1)
+
+    def test_coming_back_to_a_page_already_seen_is_no_progress(self):
+        s = AGENT.StallDetector()
+        go = AGENT.action_signature("go_to_web", {"url": "x"})
+        self.assertEqual(s.record(go, "b", True, before="a"), 0)  # b is new
+        self.assertEqual(s.unchanged, 0)
+        got = [s.record(go, "a" if i % 2 == 0 else "b", True, before="b" if i % 2 == 0 else "a") for i in range(5)]
+        self.assertEqual(got, [0, 0, 0, 0, 5])
+        self.assertEqual(s.record(go, "c", True, before="b"), 0)  # somewhere new starts over
+        self.assertEqual(s.unchanged, 0)
+
+    def test_a_change_that_cannot_be_read_counts_as_progress_and_reset_forgets_pages(self):
+        s = AGENT.StallDetector()
+        a = AGENT.action_signature("scroll_web", {"direction": "down", "x": 500, "y": 500})
+        s.record(a, "p", False, before="p")
+        s.record(a, None, True, before="p")  # a panel scrolled: the page's fingerprint cannot tell
+        self.assertEqual(s.unchanged, 0)
+        s.reset()
+        self.assertEqual(s.seen, set())
+        self.assertEqual(s.record(a, "p", True, before="q"), 0)
+        self.assertEqual(s.unchanged, 0)
 
     def test_nearby_points_are_the_same_target(self):
         a = AGENT.action_signature("click_web", {"element": "OK", "x": 501, "y": 300})
@@ -115,7 +136,7 @@ class StallTests(unittest.TestCase):
     def test_an_alert_still_starts_an_observation(self):
         obs = {"role": "user", "content": [{"type": "text", "text": "<observation>\n"}, {"type": "text", "text": "x"}]}
         AGENT.with_alert(obs, AGENT.STALL_ALERT.format(n=3))
-        self.assertTrue(obs["content"][0]["text"].startswith("<system_alert>Your last 3 actions did not change"))
+        self.assertTrue(obs["content"][0]["text"].startswith("<system_alert>Your last 3 actions did not get you anywhere new"))
         self.assertTrue(AGENT.is_observation(obs))
         self.assertFalse(AGENT.is_observation({"role": "user", "content": [{"type": "text", "text": "<system_alert>x"}]}))
 

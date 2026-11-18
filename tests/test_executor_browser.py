@@ -38,11 +38,24 @@ class ActionResultTests(SiteBrowserCase):
         with quiet():
             obs = b.observation()
         first = texts(obs)[0]
-        self.assertTrue(first.startswith("<system_alert>Your last 3 actions did not change the page."), first)
+        self.assertTrue(first.startswith("<system_alert>Your last 3 actions did not get you anywhere new"), first)
         self.assertTrue(AGENT.is_observation(obs))
         with quiet():
             again = b.observation()
         self.assertFalse(texts(again)[0].startswith("<system_alert>"))  # said once
+
+    def test_going_back_and_forth_between_known_pages_is_alerted(self):
+        # A model stuck on a dead button alternates retries with reloads and go_to_web back to the same
+        # page. Each of those changes the page, so only counting unchanged pages never caught the loop.
+        b = self.start("/fixtures/dead-button.html")
+        here, other = b.page.url, self.site.url("/fixtures/long.html")
+        self.act(b, "go_to_web", url=other)  # a page not seen before: progress
+        self.assertIsNone(b._alert)
+        alerts = []
+        for i in range(5):
+            self.act(b, "go_to_web", url=here if i % 2 == 0 else other)  # only pages already seen
+            alerts.append(b._alert is not None)
+        self.assertEqual(alerts, [False, False, False, False, True])
 
     def test_writing_where_there_is_no_field(self):
         b = self.start("/fixtures/keys.html")

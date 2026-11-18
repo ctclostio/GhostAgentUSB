@@ -60,8 +60,9 @@ def page_js(target, fn, arg=None, seconds=PAGE_JS_SECONDS, handle=False):
 # --------------------------------------------------------------------------------------------
 
 STALL_SAME_ACTION = 3      # the same action on the same unchanged page this many times ...
-STALL_UNCHANGED_STEPS = 5  # ... or this many actions in a row that changed nothing: tell the model
-STALL_ALERT = ("<system_alert>Your last {n} actions did not change the page. Do not repeat them. Try a fundamentally "
+STALL_UNCHANGED_STEPS = 5  # ... or this many actions in a row that got nowhere new: tell the model
+STALL_ALERT = ("<system_alert>Your last {n} actions did not get you anywhere new: the page stayed the same or came "
+               "back to a state you had already seen. Do not repeat them. Try a fundamentally "
                "different approach (another element, go_to_web a known URL, ctrl_f_web, reader_mode, another site). "
                "If something blocks you, call answer and say what.</system_alert>")
 CHECKIN_ALERT = ("<system_alert>{n} steps so far. Check your strategy: if the last steps did not bring you closer to "
@@ -70,30 +71,45 @@ CHECKIN_ALERT = ("<system_alert>{n} steps so far. Check your strategy: if the la
 
 
 class StallDetector:
-    """Counts actions that left the page unchanged. record() returns the number of such actions in a
-    row once an alert is due (the same action on the same unchanged page STALL_SAME_ACTION times, or
-    STALL_UNCHANGED_STEPS unchanged actions in a row), else 0; the counts start over after an alert
-    and after any action that changed the page. Actions whose effect is unknown count neither way."""
+    """Counts actions that got nowhere new: ones that left the page unchanged, and ones that only led
+    back to a page state already seen in this task. A model stuck on a dead button alternates its
+    retries with reloads and go_to_web back to the same page; each of those changes the page, so
+    counting only unchanged pages never catches the loop. record() returns the number of such
+    actions in a row once an alert is due (the same action on the same unchanged page
+    STALL_SAME_ACTION times, or STALL_UNCHANGED_STEPS such actions in a row), else 0; the counts
+    start over after an alert and after any action that reached a new page state (or one that
+    cannot be read: page None). Actions whose effect is unknown count neither way."""
 
     def __init__(self):
         self.reset()
 
     def reset(self):
+        """A new task or a fresh start: also forget the page states seen so far."""
+        self.seen = set()
+        self._restart()
+
+    def _restart(self):
         self.unchanged = 0
         self.repeats = {}
 
-    def record(self, action, page, changed):
+    def record(self, action, page, changed, before=None):
+        if before is not None:
+            self.seen.add(before)
         if changed is None:
             return 0
-        if changed:
-            self.reset()
+        if changed and (page is None or page not in self.seen):
+            if page is not None:
+                self.seen.add(page)
+            self._restart()
             return 0
+        if page is not None:
+            self.seen.add(page)
         self.unchanged += 1
         key = (action, page)
         self.repeats[key] = self.repeats.get(key, 0) + 1
         if self.repeats[key] >= STALL_SAME_ACTION or self.unchanged >= STALL_UNCHANGED_STEPS:
             n = self.unchanged
-            self.reset()
+            self._restart()
             return n
         return 0
 
